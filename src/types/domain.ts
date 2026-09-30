@@ -17,8 +17,16 @@ export interface MotorcycleVm {
   brand: string;
   model: string;
   plate: string;
+  /** Last ACTUAL reading (effective km). */
   odometerKm: number;
-  odometerAsOf: string;
+  /** Date that actual reading was recorded — never "today" by default; null if unknown. */
+  odometerAsOf: string | null;
+  /** Live estimate for today; null when the actual reading is current (never persisted). */
+  estimatedOdometerKm: number | null;
+  /** Estimate rests on a low-confidence rate (90-day fallback or a stale reading, §7.5) — say "rough". */
+  estimateIsRough: boolean;
+  /** Time has passed but there is no riding history to estimate from — ask for another reading. */
+  needsMoreReadings: boolean;
 }
 
 export interface UpcomingScheduleVm {
@@ -66,6 +74,8 @@ export interface DashboardData {
   /** null = no enabled anchored schedules (HEALTH_SCORE.md §5) — UI shows "—" + setup CTA. */
   healthScore: number | null;
   isPartialScore: boolean;
+  /** Score used an estimated (not freshly read) odometer for at least one km-based item. */
+  isEstimatedScore: boolean;
   upcoming: UpcomingScheduleVm[];
   documentWarning?: DocumentWarningVm;
   activity: ActivityVm[];

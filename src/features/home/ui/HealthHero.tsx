@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/Card';
 import { HealthRing } from '@/components/HealthRing';
 import { Icon } from '@/components/Icon';
-import { interpolate, strings } from '@/i18n/strings';
+import { interpolate } from '@/i18n/strings';
+import { useStrings } from '@/i18n/useStrings';
 import { makeStyles, typeStyle } from '@/theme/styles';
 import { useTheme } from '@/theme/useTheme';
 import type { HealthBandId } from '@/types/domain';
@@ -12,6 +13,8 @@ export interface HealthHeroProps {
   score: number | null;
   bandId: HealthBandId | null;
   bandLabel: string;
+  /** The score used an estimated odometer for a km-based item — say so; hidden for actual readings. */
+  isEstimated: boolean;
   onPress: () => void;
 }
 
@@ -37,13 +40,17 @@ const useStyles = makeStyles((t) =>
       gap: t.space.s1,
     },
     caption: typeStyle(t.type.captionStrong, t.primary.text, t.type.family),
+    estimated: typeStyle(t.type.caption, t.text.tertiary, t.type.family),
   }),
 );
 
-export function HealthHero({ score, bandId, bandLabel, onPress }: HealthHeroProps) {
+export function HealthHero({ score, bandId, bandLabel, isEstimated, onPress }: HealthHeroProps) {
   const styles = useStyles();
   const { tokens } = useTheme();
-  const a11yLabel = interpolate(strings.dashboard.health.a11y, { score: score ?? 'not set up', band: bandLabel });
+  const strings = useStrings();
+  const showEstimated = isEstimated && score !== null;
+  const baseA11y = interpolate(strings.dashboard.health.a11y, { score: score ?? 'not set up', band: bandLabel });
+  const a11yLabel = showEstimated ? `${baseA11y} ${strings.dashboard.health.estimated}.` : baseA11y;
 
   return (
     <Card onPress={onPress} accessibilityLabel={a11yLabel} size="lg">
@@ -56,6 +63,7 @@ export function HealthHero({ score, bandId, bandLabel, onPress }: HealthHeroProp
           scoreSuffix={strings.dashboard.health.scoreOf}
           accessibilityLabel={a11yLabel}
         />
+        {showEstimated ? <Text style={styles.estimated}>{strings.dashboard.health.estimated}</Text> : null}
         <View style={styles.captionRow}>
           <Text style={styles.caption}>{strings.dashboard.health.caption}</Text>
           <Icon name="arrowRight" size={tokens.iconSize.inline} color={tokens.primary.text} />

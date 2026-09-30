@@ -15,9 +15,13 @@ import { TextField } from '@/components/TextField';
 import { showToast } from '@/components/Toast';
 import { Toggle } from '@/components/Toggle';
 import { FuelRepository } from '@/db/repositories/FuelRepository';
+import { formatOdometerReference, initialOdometerField } from '@/features/odometer/odometerText';
 import { useActiveBike } from '@/hooks/useActiveBike';
+import { useToday } from '@/hooks/useToday';
+import { useStrings } from '@/i18n/useStrings';
 import { todayIso } from '@/lib/dates';
 import { FuelLogService } from '@/services/FuelLogService';
+import { OdometerService } from '@/services/OdometerService';
 import { makeStyles, typeStyle } from '@/theme/styles';
 
 const useStyles = makeStyles((t) => ({
@@ -31,6 +35,8 @@ export default function FuelLogRoute() {
   const router = useRouter();
   const styles = useStyles();
   const { activeBike } = useActiveBike();
+  const today = useToday();
+  const strings = useStrings();
   const existing = fuelLogId !== undefined ? FuelRepository.getById(fuelLogId) : undefined;
 
   const [date, setDate] = useState(existing?.fuelDate ?? todayIso());
@@ -38,9 +44,8 @@ export default function FuelLogRoute() {
   const [totalCost, setTotalCost] = useState(
     existing !== undefined ? (existing.totalCostCentavos / 100).toFixed(2) : '',
   );
-  const [odometer, setOdometer] = useState(
-    existing !== undefined ? String(existing.odometerKm) : activeBike !== null ? String(activeBike.currentOdometerKm) : '',
-  );
+  // New logs start empty — the last reading is shown as a reference, never pre-filled as today's reading.
+  const [odometer, setOdometer] = useState(initialOdometerField(existing?.odometerKm));
   const [station, setStation] = useState(existing?.station ?? FuelRepository.lastStation(activeBike?.id ?? '') ?? '');
   const [isFullTank, setIsFullTank] = useState(existing?.isFullTank !== 0);
   const [notes, setNotes] = useState(existing?.notes ?? '');
@@ -49,6 +54,8 @@ export default function FuelLogRoute() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const bikeId = existing?.motorcycleId ?? activeBike?.id ?? null;
+  const odometerReference =
+    bikeId !== null ? formatOdometerReference(OdometerService.getSnapshot(bikeId, today), strings) : '';
   if (bikeId === null) {
     return (
       <Screen>
@@ -58,11 +65,17 @@ export default function FuelLogRoute() {
   }
 
   const handleSubmit = () => {
+    if (odometer === '') {
+      // Required for fuel logs: an empty field must never become a 0 km (or any) reading.
+      setFieldErrors({ odometerKm: strings.odometerReference.requiredError });
+      setError(undefined);
+      return;
+    }
     const input = {
       fuelDate: date,
       liters: liters !== '' ? Number(liters) : 0,
       totalCostCentavos: totalCost !== '' ? Math.round(Number(totalCost) * 100) : 0,
-      odometerKm: odometer !== '' ? Number(odometer) : 0,
+      odometerKm: Number(odometer),
       station: station !== '' ? station : null,
       isFullTank,
       notes: notes !== '' ? notes : null,
@@ -104,7 +117,7 @@ export default function FuelLogRoute() {
       <FormField label="Total cost" required error={fieldErrors?.totalCostCentavos} hint={priceLabel}>
         <MoneyInput value={totalCost} onChange={setTotalCost} />
       </FormField>
-      <FormField label="Odometer (km)" required error={fieldErrors?.odometerKm}>
+      <FormField label="Odometer (km)" required error={fieldErrors?.odometerKm} hint={odometerReference}>
         <OdoInput value={odometer} onChange={setOdometer} />
       </FormField>
       <FormField label="Date" required error={fieldErrors?.fuelDate}>

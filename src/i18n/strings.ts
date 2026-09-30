@@ -23,6 +23,8 @@ export const strings = {
       scoreOf: '/ 100',
       caption: 'Tap for the full breakdown',
       a11y: 'Health score {score}, {band}. Opens the score breakdown.',
+      /** Shown only when a km-based item in the score used an estimated odometer. */
+      estimated: 'Based on estimated mileage',
     },
     band: {
       excellent: 'Excellent',
@@ -34,6 +36,12 @@ export const strings = {
     odometer: {
       title: 'Odometer',
       asOf: 'as of {date}',
+      noReading: 'No reading yet',
+      /** Live projection from the last actual reading — never saved as a reading. */
+      estimated: '~{km} estimated today',
+      estimatedRough: '~{km} rough estimate today',
+      /** Days passed but no riding history yet: no estimate is invented. */
+      needsReading: 'Add another reading to estimate mileage',
       update: 'Update',
     },
     nextMaintenance: {
@@ -125,6 +133,28 @@ export const strings = {
       maintenance: 'Maintenance log',
       repair: 'Repair log',
     },
+  },
+  /** Odometer reference captions (forms, odometer screen, component detail) — whole templates, no fragments. */
+  odometerReference: {
+    none: 'No odometer reading yet',
+    actual: 'Last reading: {km} on {date}',
+    withEstimate: 'Last reading: {km} on {date} · ~{estimate} estimated today',
+    withRoughEstimate: 'Last reading: {km} on {date} · ~{estimate} rough estimate today',
+    needsReading: 'Last reading: {km} on {date} · add another reading to estimate current mileage',
+    optionalHint: "{reference}. Leave blank if you don't know the reading.",
+    requiredError: 'Enter the odometer reading shown on your bike.',
+  },
+  baseline: {
+    notSetUp:
+      "Not set up yet. Enter the odometer reading from when this was last done. If it was done today, tap Just serviced today (add today's reading first if you know it).",
+    needsKm: 'Enter the odometer reading from when this was last done',
+  },
+  remindersList: {
+    notificationsEnded: "Overdue since {date}. No more notifications will be sent for this; log it once it's done.",
+  },
+  dataPrivacy: {
+    deleted: 'All data deleted',
+    deletedFilesRemain: 'All records deleted, but some stored files could not be removed',
   },
   onboarding: {
     welcome: {
@@ -221,7 +251,7 @@ export const strings = {
     },
     offer: {
       title: 'Would you like a quick tour?',
-      body: 'Two minutes, skippable anytime. You can also replay it later from Settings.',
+      body: 'About 3 minutes, skippable anytime. You can also replay it later from Settings.',
       start: 'Start tour',
       later: 'Not now',
       never: 'Never show this again',
@@ -237,35 +267,43 @@ export const strings = {
       title: 'Dashboard tour',
       intro: {
         title: 'This is your dashboard',
-        body: 'Everything about your bike at a glance. A few highlights, skip anytime.',
+        body: 'Tolits keeps track of when your bike needs service. Here is how it works in under a minute. Skip anytime.',
       },
       bikeChip: {
         title: 'Your active bike',
-        body: 'Tap here to open the Garage and switch between motorcycles.',
+        body: 'Tap here to open the Garage and switch motorcycles. Everything on this screen follows the active bike.',
       },
       bikeChipSingle: {
         title: 'Your bike',
-        body: 'Tap here to open the Garage. Add more bikes and switch between them anytime.',
+        body: 'Tap here to open the Garage, where you can edit this bike or add another.',
+      },
+      odometer: {
+        title: 'Actual vs estimated mileage',
+        body: "The big number is your last actual odometer reading, with the date you entered it. Between readings, Tolits estimates today's mileage from how much you usually ride and marks it with ~. Estimates are never saved as readings.",
       },
       health: {
         title: 'Health Score',
-        body: 'A live 0–100 score from your maintenance schedule. Tap it anytime for the full breakdown.',
+        body: 'A 0–100 summary of how close your tracked parts are to their next service; oil, brakes, and tires count most. It says "Based on estimated mileage" when it used an estimate. Tap it for the breakdown.',
       },
-      odometer: {
-        title: 'Odometer',
-        body: 'Keep this current. Schedules, reminders, and fuel stats all build on it.',
+      dueItems: {
+        title: 'Due items and reminders',
+        body: 'Parts nearing service show here as Due soon or Overdue. The bell at the top lists everything due across your bikes, and Tolits can remind you before things are due.',
       },
       quickActions: {
-        title: 'Quick actions',
-        body: 'Log a service, fuel-up, expense, or odometer reading in a couple of taps.',
+        title: 'Log what you do',
+        body: "Log a service right after it's done, plus fuel-ups, expenses, and odometer updates. Don't know the odometer for a service? Leave it blank; Tolits won't guess it for you.",
       },
       maintenanceTab: {
         title: 'Maintenance lives here',
         body: 'Tap the Maintenance tab to see every component schedule.',
       },
       maintenanceList: {
-        title: 'Your schedule',
-        body: 'Each component shows its status (OK, due soon, or overdue) from your odometer and history.',
+        title: 'Your components',
+        body: 'Each part shows OK, Due soon, Overdue, or Not set up. Tap a Not set up part and enter when it was last done so Tolits can track it.',
+      },
+      keepCurrent: {
+        title: 'Keeping it accurate',
+        body: 'Two habits are enough: update your odometer every week or two, and log services when they happen. Tolits estimates the rest in between.',
       },
     },
     garage: {

@@ -18,21 +18,20 @@ import { Platform } from 'react-native';
 import type { DocumentRow, ScheduleRow } from '@/db/schema';
 import { DocumentRepository } from '@/db/repositories/DocumentRepository';
 import { MotorcycleRepository } from '@/db/repositories/MotorcycleRepository';
-import { OdometerRepository } from '@/db/repositories/OdometerRepository';
 import { ScheduleRepository } from '@/db/repositories/ScheduleRepository';
 import { ScheduledNotificationRepository } from '@/db/repositories/ScheduledNotificationRepository';
 import { SettingsRepository } from '@/db/repositories/SettingsRepository';
 import { componentLabel } from '@/features/maintenance/componentMeta';
 import { interpolate, strings } from '@/i18n/strings';
-import { addDays, daysBetween, nowMs, todayIso } from '@/lib/dates';
+import { daysBetween, nowMs, todayIso } from '@/lib/dates';
 import { onDomainEvents } from '@/lib/events';
 import { formatMonthDay } from '@/lib/format';
 import { log } from '@/lib/log';
 import type { ComponentType, DocType } from '@/types/enums';
+import type { DailyRateResult } from './FuelService';
+import { OdometerService } from './OdometerService';
 import {
-  computeDailyKmRate,
   DEFAULT_REMINDER_SETTINGS,
-  type DailyRateResult,
   type NotificationPrefs,
   type PlanEntry,
   type PlannerInput,
@@ -142,23 +141,24 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 function gatherPlannerInput(settings: ReminderSettings): PlannerInput {
   const today = todayIso();
-  const bikes = MotorcycleRepository.list().map((b) => ({
-    id: b.id,
-    nickname: b.nickname,
-    currentOdometerKm: b.currentOdometerKm,
-    isArchived: b.isArchived,
-  }));
-
   const schedulesByBike: Record<string, ScheduleRow[]> = {};
   const rateByBike: Record<string, DailyRateResult> = {};
-  for (const bike of bikes) {
-    if (bike.isArchived === 1) {
+  const bikes: PlannerInput['bikes'][number][] = [];
+  for (const b of MotorcycleRepository.list()) {
+    // Actual reading + its real date + the shared rate; the planner projects from these.
+    const snapshot = b.isArchived === 1 ? null : OdometerService.getSnapshot(b.id, today);
+    bikes.push({
+      id: b.id,
+      nickname: b.nickname,
+      currentOdometerKm: b.currentOdometerKm,
+      lastReadingDate: snapshot?.actualDate ?? null,
+      isArchived: b.isArchived,
+    });
+    if (snapshot === null) {
       continue;
     }
-    schedulesByBike[bike.id] = ScheduleRepository.listByBike(bike.id);
-    const logs30 = OdometerRepository.listInWindow(bike.id, addDays(today, -30), today);
-    const logs90 = OdometerRepository.listInWindow(bike.id, addDays(today, -90), today);
-    rateByBike[bike.id] = computeDailyKmRate(logs30, logs90);
+    schedulesByBike[b.id] = ScheduleRepository.listByBike(b.id);
+    rateByBike[b.id] = snapshot.rate;
   }
 
   const documents: DocumentRow[] = DocumentRepository.listAll();
@@ -295,6 +295,25 @@ export async function replanNotifications(): Promise<void> {
     ScheduledNotificationRepository.insertMany(persisted);
   } catch (error) {
     log.error('notifications.replanFailed', { error: String(error) });
+  }
+}
+
+/**
+ * Cancels every notification Tolits has scheduled with the OS (Delete all data,
+ * SECURITY.md §6). Must run BEFORE the `scheduled_notifications` rows are
+ * wiped — re-planning afterwards could only cancel what it still has rows for,
+ * so already-scheduled reminders for deleted bikes would still fire. Uses the
+ * OS-level cancel-all (every scheduled notification in this app is Tolits's),
+ * which also catches any row the table lost track of. Never throws.
+ */
+export async function cancelAllOwnedNotifications(): Promise<void> {
+  if (Platform.OS === 'web') {
+    return;
+  }
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch (error) {
+    log.warn('notifications.cancelAllFailed', { error: String(error) });
   }
 }
 

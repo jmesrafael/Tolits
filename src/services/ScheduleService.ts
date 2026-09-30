@@ -13,6 +13,7 @@ import { COMPONENT_DEFAULTS } from '@/db/seed/defaults';
 import { emitDomainEvent } from '@/lib/events';
 import { appError, err, ok, type Result } from '@/lib/result';
 import type { ComponentType, DrivetrainType } from '@/types/enums';
+import { OdometerService } from './OdometerService';
 import {
   baselineInput,
   customComponentInput,
@@ -248,6 +249,73 @@ export const ScheduleService = {
         });
       });
       emitDomainEvent('schedule:changed', { bikeId: schedule.motorcycleId, scheduleId });
+      return ok(undefined);
+    });
+  },
+
+  /**
+   * "Just serviced today" (S-11): the date is known (today); the mileage is
+   * recorded only if the user entered it. The bike's cached odometer is never
+   * substituted — it is the LAST reading, possibly weeks old, not today's.
+   * Without a mileage the baseline is date-only (time-dimension tracking).
+   *
+   * An entered mileage is today's actual meter reading, so it is also logged as
+   * a manual odometer reading (same transaction as the baseline) — unless an
+   * identical reading already exists for today (no duplicates). A value that
+   * conflicts with the odometer history is rejected and nothing is saved.
+   */
+  markServicedToday(scheduleId: string, today: string, enteredOdometerKm: number | null): Result<void> {
+    if (enteredOdometerKm === null) {
+      return this.setBaseline({ scheduleId, lastDoneOdometerKm: null, lastDoneDate: today });
+    }
+    const parsed = validateWith(baselineInput, { scheduleId, lastDoneOdometerKm: enteredOdometerKm, lastDoneDate: today });
+    if (!parsed.ok) {
+      return parsed;
+    }
+    return guardService('schedule.servicedToday', () => {
+      const schedule = ScheduleRepository.getById(scheduleId);
+      if (schedule === undefined) {
+        return err(appError('BusinessRuleError', 'schedule.notFound', 'Schedule not found'));
+      }
+      if (schedule.anchorSource === 'record') {
+        return err(appError('BusinessRuleError', 'baseline.hasRecords', 'This schedule already has history'));
+      }
+      const bikeId = schedule.motorcycleId;
+      const check = OdometerService.validateReading(bikeId, enteredOdometerKm, today);
+      if (!check.ok) {
+        return check;
+      }
+      const { effectiveKm, violation } = check.value;
+      if (violation !== null) {
+        const code = violation.kind === 'belowPrevious' ? 'odometer.belowPrevious' : 'odometer.aboveNext';
+        return err(
+          appError(
+            'ValidationError',
+            code,
+            `Odometer reading conflicts with an earlier entry (${violation.neighborEffectiveKm} km on ${violation.neighborDate})`,
+            { lastDoneOdometerKm: code },
+          ),
+        );
+      }
+      const latest = OdometerRepository.latest(bikeId);
+      const alreadyLogged = latest !== undefined && latest.recordedDate === today && latest.effectiveKm === effectiveKm;
+      inTransaction(() => {
+        if (!alreadyLogged) {
+          const odo = OdometerService.recordReadingInTx(bikeId, enteredOdometerKm, today, 'manual', null);
+          if (!odo.ok) {
+            throw new Error(odo.error.message); // pre-validated above; rolls the baseline back too
+          }
+        }
+        ScheduleRepository.setAnchor(scheduleId, {
+          anchorOdometerKm: effectiveKm,
+          anchorDate: today,
+          anchorSource: 'baseline',
+        });
+      });
+      emitDomainEvent('schedule:changed', { bikeId, scheduleId });
+      if (!alreadyLogged) {
+        emitDomainEvent('odometer:changed', { bikeId });
+      }
       return ok(undefined);
     });
   },

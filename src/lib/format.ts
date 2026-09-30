@@ -22,9 +22,12 @@ const pesoWhole = new Intl.NumberFormat('en-PH', {
 
 const number = new Intl.NumberFormat('en-PH');
 
-const monthDay = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' });
+// Calendar-date formatters are pinned to UTC and fed UTC instants built from the
+// date's own Y-M-D (calendarInstant), so the label never depends on the device's
+// time zone. Pinning to UTC is a zone-free representation, not a location.
+const monthDay = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-const monthYear = new Intl.DateTimeFormat('en-PH', { month: 'short', year: 'numeric' });
+const monthYear = new Intl.DateTimeFormat('en-PH', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 const weekdayMonthDay = new Intl.DateTimeFormat('en-PH', {
   weekday: 'long',
@@ -45,13 +48,25 @@ export function formatKm(km: number): string {
   return `${number.format(km)} km`;
 }
 
+/**
+ * A 'YYYY-MM-DD' calendar date as the UTC instant of that Y-M-D. Paired with the
+ * UTC-pinned formatters above, the rendered day is exactly the stored day in
+ * every device time zone. (The old `new Date(iso)` + device-zone formatter
+ * showed the previous day anywhere west of UTC.)
+ */
+export function calendarInstant(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1));
+}
+
+/** Calendar date 'YYYY-MM-DD' → "Aug 1", identical in every time zone. */
 export function formatMonthDay(isoDate: string): string {
-  return monthDay.format(new Date(isoDate));
+  return monthDay.format(calendarInstant(isoDate));
 }
 
 /** e.g. "Mar 2027" — Quick Log cards' date-governed "about" estimate (item 11). */
 export function formatMonthYear(isoDate: string): string {
-  return monthYear.format(new Date(`${isoDate}T00:00:00`));
+  return monthYear.format(calendarInstant(isoDate));
 }
 
 export function formatFullDate(date: Date): string {

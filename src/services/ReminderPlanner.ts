@@ -17,6 +17,7 @@
 import type { DocumentRow, ScheduleRow } from '@/db/schema';
 import { addDays, daysBetween, intervalDaysFromMonths, parseIsoDate, toIsoDate } from '@/lib/dates';
 import { type DocType, EXPIRY_DOC_TYPES } from '@/types/enums';
+import { DEFAULT_DAILY_KM_RATE, type DailyRateResult, projectOdometer } from './FuelService';
 
 export type NotificationType = 'maintenance_due' | 'maintenance_overdue' | 'document_expiry' | 'backup_reminder';
 
@@ -26,39 +27,6 @@ export const OVERDUE_NAG_MAX = 3;
 export const OVERDUE_NAG_INTERVAL_DAYS = 7;
 export const KM_LEAD_DAYS = 3;
 export const TIME_LEAD_DAYS = 7;
-export const DEFAULT_DAILY_KM_RATE = 25;
-export const MIN_DAILY_KM_RATE = 5;
-export const MAX_DAILY_KM_RATE = 300;
-
-export interface DailyRateResult {
-  rate: number;
-  confidence: 'high' | 'low';
-}
-
-/** BUSINESS_RULES.md §7.5. Windows are pre-fetched by the caller; this stays pure. */
-export function computeDailyKmRate(
-  logs30d: readonly { effectiveKm: number }[],
-  logs90d: readonly { effectiveKm: number }[],
-): DailyRateResult {
-  const fromWindow = (logs: readonly { effectiveKm: number }[], days: number): number | null => {
-    if (logs.length < 2 || days <= 0) {
-      return null;
-    }
-    const km = logs.map((l) => l.effectiveKm);
-    return (Math.max(...km) - Math.min(...km)) / days;
-  };
-  const clamp = (rate: number): number => Math.min(MAX_DAILY_KM_RATE, Math.max(MIN_DAILY_KM_RATE, rate));
-
-  const r30 = fromWindow(logs30d, 30);
-  if (r30 !== null) {
-    return { rate: clamp(r30), confidence: 'high' };
-  }
-  const r90 = fromWindow(logs90d, 90);
-  if (r90 !== null) {
-    return { rate: clamp(r90), confidence: 'low' };
-  }
-  return { rate: DEFAULT_DAILY_KM_RATE, confidence: 'low' };
-}
 
 export interface QuietHours {
   /** 'HH:MM' local, 24h. */
@@ -118,7 +86,10 @@ export interface PlanEntry {
 export interface PlannerBike {
   id: string;
   nickname: string;
+  /** Last ACTUAL odometer reading (effective km) — the motorcycles cache, never an estimate. */
   currentOdometerKm: number;
+  /** Date of that last actual reading; null when unknown (treated as today — nothing to project). */
+  lastReadingDate: string | null;
   isArchived: number;
 }
 
@@ -126,58 +97,95 @@ export interface PlannerInput {
   bikes: readonly PlannerBike[];
   /** Enabled/disabled/muted schedules for each bike — filtering happens inside the planner. */
   schedulesByBike: Readonly<Record<string, readonly ScheduleRow[]>>;
-  /** Daily-km rate per bike (computeDailyKmRate output); missing entries fall back to the default. */
+  /** Daily-km rate per bike (FuelService.computeDailyKmRate output); missing entries fall back to the default. */
   rateByBike: Readonly<Record<string, DailyRateResult>>;
   documents: readonly DocumentRow[];
   settings: ReminderSettings;
 }
 
-interface DueProjection {
+export interface DueProjection {
   dueDateIso: string;
   governs: 'km' | 'days';
   lowConfidence: boolean;
+  /** Remaining as of today (km: estimated from the last actual reading). */
   remainingKm: number | null;
   remainingDays: number | null;
+  /** Remaining km on a given day — notification copy uses the value for its own fire date. */
+  remainingKmAt: (dateIso: string) => number | null;
+  remainingDaysAt: (dateIso: string) => number | null;
 }
 
-function projectDue(
+/**
+ * Km-due projection (NOTIFICATION_ENGINE.md §4), anchored on the date of the
+ * last ACTUAL reading rather than today: the km remaining at that reading are
+ * spent at `rate` starting from that date. Projecting from today instead would
+ * push the due date later every day the user doesn't log.
+ *
+ * Exception — no riding history (rate source 'default'): there is no evidence
+ * the bike moved since its reading, so no riding is assumed for the elapsed
+ * days; the rough default rate only projects forward from today. A parked bike
+ * therefore never becomes "overdue" on an assumption — only its actual
+ * remaining km (or its time interval) can make it overdue.
+ */
+export function projectDue(
   schedule: ScheduleRow,
-  currentOdometerKm: number,
+  bike: PlannerBike,
   todayIso: string,
   rateInfo: DailyRateResult,
 ): DueProjection | null {
-  let kmDue: { dateIso: string; remainingKm: number } | null = null;
+  let kmDue: { dateIso: string; remainingKmAt: (dateIso: string) => number } | null = null;
   if (schedule.intervalKm !== null && schedule.anchorOdometerKm !== null) {
-    const remainingKm = schedule.intervalKm - (currentOdometerKm - schedule.anchorOdometerKm);
-    const days = Math.ceil(remainingKm / rateInfo.rate);
-    kmDue = { dateIso: addDays(todayIso, days), remainingKm };
+    const intervalKm = schedule.intervalKm;
+    const anchorKm = schedule.anchorOdometerKm;
+    const readingDate =
+      bike.lastReadingDate !== null && bike.lastReadingDate <= todayIso ? bike.lastReadingDate : todayIso;
+    const baseDate = rateInfo.source === 'default' ? todayIso : readingDate;
+    const remainingAtReading = intervalKm - (bike.currentOdometerKm - anchorKm);
+    kmDue = {
+      dateIso: addDays(baseDate, Math.ceil(remainingAtReading / rateInfo.rate)),
+      remainingKmAt: (dateIso) =>
+        intervalKm - (projectOdometer(bike.currentOdometerKm, baseDate, rateInfo, dateIso) - anchorKm),
+    };
   }
 
-  let timeDue: { dateIso: string; remainingDays: number } | null = null;
+  let timeDue: { dateIso: string; remainingDaysAt: (dateIso: string) => number } | null = null;
   if (schedule.intervalMonths !== null && schedule.anchorDate !== null) {
     const dueDateIso = addDays(schedule.anchorDate, intervalDaysFromMonths(schedule.intervalMonths));
-    timeDue = { dateIso: dueDateIso, remainingDays: daysBetween(todayIso, dueDateIso) };
+    timeDue = { dateIso: dueDateIso, remainingDaysAt: (dateIso) => daysBetween(dateIso, dueDateIso) };
   }
 
   if (kmDue === null && timeDue === null) {
     return null;
   }
-  if (kmDue !== null && (timeDue === null || kmDue.dateIso <= timeDue.dateIso)) {
-    return {
-      dueDateIso: kmDue.dateIso,
-      governs: 'km',
-      lowConfidence: rateInfo.confidence === 'low',
-      remainingKm: kmDue.remainingKm,
-      remainingDays: timeDue?.remainingDays ?? null,
-    };
-  }
+  const remainingKmAt = (dateIso: string) => kmDue?.remainingKmAt(dateIso) ?? null;
+  const remainingDaysAt = (dateIso: string) => timeDue?.remainingDaysAt(dateIso) ?? null;
+  const kmGoverns = kmDue !== null && (timeDue === null || kmDue.dateIso <= timeDue.dateIso);
   return {
-    dueDateIso: timeDue!.dateIso,
-    governs: 'days',
-    lowConfidence: false,
-    remainingKm: kmDue?.remainingKm ?? null,
-    remainingDays: timeDue!.remainingDays,
+    dueDateIso: kmGoverns ? kmDue!.dateIso : timeDue!.dateIso,
+    governs: kmGoverns ? 'km' : 'days',
+    lowConfidence: kmGoverns && rateInfo.confidence === 'low',
+    remainingKm: remainingKmAt(todayIso),
+    remainingDays: remainingDaysAt(todayIso),
+    remainingKmAt,
+    remainingDaysAt,
   };
+}
+
+/**
+ * Overdue nag policy (§6): at most OVERDUE_NAG_MAX notifications, weekly from
+ * the due date. The single source for both the planner and the in-app list.
+ */
+export function overdueNagDates(dueDateIso: string): string[] {
+  return Array.from({ length: OVERDUE_NAG_MAX }, (_, i) => addDays(dueDateIso, i * OVERDUE_NAG_INTERVAL_DAYS));
+}
+
+/**
+ * True once every overdue nag date is in the past: the item is still overdue
+ * but no further notification will be sent — the UI must say so rather than
+ * let it go silently quiet (and a future catch-up flow can list these).
+ */
+export function overdueNotificationsEnded(dueDateIso: string, todayIso: string): boolean {
+  return overdueNagDates(dueDateIso).every((d) => d < todayIso);
 }
 
 function timeToMinutes(time: string): number {
@@ -282,7 +290,11 @@ export function planReminders(input: PlannerInput, nowMs: number): PlanEntry[] {
       continue;
     }
     const schedules = input.schedulesByBike[bike.id] ?? [];
-    const rateInfo = input.rateByBike[bike.id] ?? { rate: DEFAULT_DAILY_KM_RATE, confidence: 'low' as const };
+    const rateInfo: DailyRateResult = input.rateByBike[bike.id] ?? {
+      rate: DEFAULT_DAILY_KM_RATE,
+      confidence: 'low',
+      source: 'default',
+    };
 
     for (const schedule of schedules) {
       if (schedule.isEnabled !== 1 || schedule.isMuted === 1) {
@@ -291,30 +303,32 @@ export function planReminders(input: PlannerInput, nowMs: number): PlanEntry[] {
       if (schedule.snoozedUntil !== null && schedule.snoozedUntil >= today) {
         continue;
       }
-      const projection = projectDue(schedule, bike.currentOdometerKm, today, rateInfo);
+      const projection = projectDue(schedule, bike, today, rateInfo);
       if (projection === null) {
         continue;
       }
       const daysUntilDue = daysBetween(today, projection.dueDateIso);
-      const data: PlanEntry['data'] = {
+      // Copy values are computed for each notification's own fire date, so the
+      // text matches the estimate when it is shown rather than when planned.
+      const dataFor = (fireDateIso: string): PlanEntry['data'] => ({
         bikeNickname: bike.nickname,
         componentType: schedule.componentType,
         customName: schedule.customName,
         governs: projection.governs,
-        remainingKm: projection.remainingKm,
-        remainingDays: projection.remainingDays,
+        remainingKm: projection.remainingKmAt(fireDateIso),
+        remainingDays: projection.remainingDaysAt(fireDateIso),
         lowConfidence: projection.lowConfidence,
-      };
+      });
 
       if (daysUntilDue <= 0) {
         if (!input.settings.prefs.maintenance_overdue) {
           continue;
         }
-        const occurrences = Array.from({ length: OVERDUE_NAG_MAX }, (_, i) =>
-          addDays(projection.dueDateIso, i * OVERDUE_NAG_INTERVAL_DAYS),
-        ).filter((d) => d >= today);
+        const occurrences = overdueNagDates(projection.dueDateIso).filter((d) => d >= today);
         for (const dateIso of occurrences) {
-          entries.push(makeEntry('maintenance_overdue', 'schedule', schedule.id, bike.id, dateIso, input.settings, data));
+          entries.push(
+            makeEntry('maintenance_overdue', 'schedule', schedule.id, bike.id, dateIso, input.settings, dataFor(dateIso)),
+          );
         }
       } else {
         if (!input.settings.prefs.maintenance_due) {
@@ -328,7 +342,9 @@ export function planReminders(input: PlannerInput, nowMs: number): PlanEntry[] {
           (d) => d >= today,
         );
         for (const dateIso of candidates) {
-          entries.push(makeEntry('maintenance_due', 'schedule', schedule.id, bike.id, dateIso, input.settings, data));
+          entries.push(
+            makeEntry('maintenance_due', 'schedule', schedule.id, bike.id, dateIso, input.settings, dataFor(dateIso)),
+          );
         }
       }
     }
@@ -355,9 +371,17 @@ export function planReminders(input: PlannerInput, nowMs: number): PlanEntry[] {
     }
   }
 
+  // §5 step 3 "drop past dates", applied to the actual fire instant: an entry
+  // for today whose fire time (after quiet-hours shifting) has already passed
+  // is dropped, not moved — the next occurrence (a later overdue nag, the due
+  // day after a lead-day entry) is already in the plan, and the in-app list
+  // shows the item meanwhile. Caps apply after this, so past entries never
+  // take a slot from a future one.
+  const upcoming = entries.filter((e) => e.fireAtMs > nowMs);
+
   // De-dup defensively (construction should already guarantee unique keys).
   const seen = new Set<string>();
-  const deduped = entries.filter((e) => {
+  const deduped = upcoming.filter((e) => {
     if (seen.has(e.key)) {
       return false;
     }

@@ -2,63 +2,36 @@ import { create } from 'zustand';
 
 import { MotorcycleRepository } from '@/db/repositories/MotorcycleRepository';
 import { ScheduleRepository } from '@/db/repositories/ScheduleRepository';
-import type { ScheduleRow } from '@/db/schema';
 import { todayIso } from '@/lib/dates';
 import { onDomainEvents } from '@/lib/events';
-import { computeScheduleStatus } from '@/services/StatusService';
+import { OdometerService } from '@/services/OdometerService';
+import { buildReminderItems, type ReminderItem } from '@/services/reminderItems';
 
-export interface ReminderItem {
-  schedule: ScheduleRow;
-  bikeId: string;
-  bikeNickname: string;
-  bucket: 'overdue' | 'thisWeek' | 'later';
-  remainingKm: number | null;
-  remainingDays: number | null;
-}
+export type { ReminderItem } from '@/services/reminderItems';
 
 interface ReminderState {
   items: ReminderItem[];
   status: 'idle' | 'ready';
-  load: () => void;
+  /** Calendar day the items were computed for — screens reload when it changes. */
+  day: string | null;
+  load: (today?: string) => void;
 }
-
-const THIS_WEEK_DAYS = 7;
 
 /** In-app Reminders list (S-05) — overdue/due-soon across all non-archived bikes, no OS scheduling. */
 export const useReminderStore = create<ReminderState>((set) => ({
   items: [],
   status: 'idle',
-  load: () => {
-    const today = todayIso();
+  day: null,
+  load: (today = todayIso()) => {
     const items: ReminderItem[] = [];
     for (const bike of MotorcycleRepository.list().filter((b) => b.isArchived === 0)) {
-      const schedules = ScheduleRepository.listByBike(bike.id).filter(
-        (s) => s.isEnabled === 1 && (s.snoozedUntil === null || s.snoozedUntil < today),
-      );
-      for (const schedule of schedules) {
-        const status = computeScheduleStatus(schedule, bike.currentOdometerKm, today);
-        if (status.status !== 'dueSoon' && status.status !== 'overdue') {
-          continue;
-        }
-        const bucket: ReminderItem['bucket'] =
-          status.status === 'overdue'
-            ? 'overdue'
-            : (status.remainingDays ?? Infinity) <= THIS_WEEK_DAYS
-              ? 'thisWeek'
-              : 'later';
-        items.push({
-          schedule,
-          bikeId: bike.id,
-          bikeNickname: bike.nickname,
-          bucket,
-          remainingKm: status.remainingKm,
-          remainingDays: status.remainingDays,
-        });
-      }
+      // Same live estimate the dashboard uses (last actual reading + elapsed days × rate).
+      const snapshot = OdometerService.getSnapshot(bike.id, today);
+      items.push(...buildReminderItems(bike, ScheduleRepository.listByBike(bike.id), snapshot, today));
     }
     const order: Record<ReminderItem['bucket'], number> = { overdue: 0, thisWeek: 1, later: 2 };
     items.sort((a, b) => order[a.bucket] - order[b.bucket]);
-    set({ items, status: 'ready' });
+    set({ items, status: 'ready', day: today });
   },
 }));
 

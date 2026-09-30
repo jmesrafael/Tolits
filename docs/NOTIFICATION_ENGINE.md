@@ -29,10 +29,12 @@ For a schedule with `interval_months`: due date = `anchor_date + interval_days` 
 Km can't fire a clock, so due-km is projected to a date:
 
 ```
-remaining_km   = interval_km − km_used
+remaining_km   = interval_km − (last_actual_odo − anchor_km)      # km left at the last ACTUAL reading
 rate           = daily-km rate (BUSINESS_RULES §7.5: 30d window → 90d → default 25, clamp [5,300])
-projected_due  = today + ceil(remaining_km / rate) days
+projected_due  = last_reading_date + ceil(remaining_km / rate) days
 ```
+
+Projection starts from the **date of the last actual reading**, not today — otherwise every day without a new reading would push the due date later. The estimated current odometer (`last_actual_odo + rate × days_since_last_reading`, rounded to 10 km) is computed live, labelled "estimated" wherever shown, and never stored as a reading. **No riding history** (rate = 25 km/day default): no riding is assumed for the days already elapsed — the projection runs from today, so a parked bike never becomes overdue on the assumption alone (its actual remaining km or time interval still can). Notification copy (`{remainingKm}`, overdue amount, remaining days) is computed for **each notification's own fire date**, and every re-plan (§5, incl. app foreground) refreshes it.
 
 Notifications at **projected_due − 3 days** and **projected_due**, at fire time. If both km and time dimensions exist, plan from whichever due point is **earlier**; never notify twice for the same schedule on the same day (dedup §5).
 **Projection confidence:** `low` if the rate came from the 90-day fallback or default — copy then uses "around/soon" phrasing (§8). Every odometer update re-projects (§5), so accuracy self-corrects as data arrives.
@@ -44,14 +46,14 @@ On **any** of: maintenance record saved/edited/deleted · odometer log added/edi
 
 1. Cancel all pending notifications owned by Tolits (tracked in `scheduled_notifications`, [DATABASE_DESIGN.md](DATABASE_DESIGN.md) §5.9).
 2. Compute the full desired plan across all non-archived bikes: for each enabled, anchored, un-muted schedule → §3/§4 entries; each document with expiry → §7; backup reminder → §7.
-3. Apply constraints: drop past dates except overdue logic (§6); quiet-hours shift (§6); dedup per schedule per day; **cap: 12 pending per bike, 48 total** (headroom under iOS's 64-pending limit) — priority order: overdue > document expiry > due soon > backup, then nearest-date first.
+3. Apply constraints: drop past dates except overdue logic (§6) — "past" is judged on the final fire instant, so a today entry whose fire time has already passed is dropped, not moved; quiet-hours shift (§6); dedup per schedule per day; **cap: 12 pending per bike, 48 total** (headroom under iOS's 64-pending limit) — priority order: overdue > document expiry > due soon > backup, then nearest-date first.
 4. Schedule via expo-notifications; persist `(notification_id, source_type, source_id, fire_at)` rows.
 
 The planner is a pure function `plan(data, settings, now) → PlanEntry[]`; the scheduler diffs/executes. This makes §3–§7 fully unit-testable without the OS ([TESTING.md](TESTING.md) §4).
 
 ## 6. Overdue, snooze, quiet hours
 
-- **Overdue nags:** when a schedule crosses `r ≥ 1.00`, plan weekly repeats at fire time, **max 3**, then silence until its data changes (any re-anchor/edit restarts the cycle). Overdue items always remain visible in-app (S-05, S-04).
+- **Overdue nags:** when a schedule crosses `r ≥ 1.00`, plan weekly repeats at fire time, **max 3**, then silence until its data changes (any re-anchor/edit restarts the cycle). Overdue items always remain visible in-app (S-05, S-04); once the last nag date has passed (or the schedule is muted), S-05 labels the item "Overdue since {date}. No more notifications will be sent" so the silence is explicit (`overdueNotificationsEnded`, shared with the planner).
 - **Snooze (per item, from S-05):** suppresses that schedule's notifications for 7 days (`snoozed_until` on the schedule); plan step 2 skips snoozed schedules.
 - **Quiet hours (default 21:00–07:00):** any computed fire time inside the window moves to the next 08:00 (or user fire time if later). Fire time and quiet hours are stored in `app_settings`.
 

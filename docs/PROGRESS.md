@@ -79,6 +79,23 @@ Verified against a synthetic "heavy 5-year user" fixture (5 bikes × 3,000 odome
 
 Conclusion: the schema/index design from M1 is sound. This was a real gap in verification, not in the design.
 
+## Phase 0 — Correct and honest (2026-09-30)
+
+Odometer/estimate/reminder consistency, stale-reading protection, and Delete All Data. No schema change, no migration.
+
+- **One daily-km rate:** `FuelService.computeDailyKmRate` (divides by the days the readings span; same-day readings can't measure a rate). `ReminderPlanner`'s window-length formula removed.
+- **Estimated odometer:** `OdometerService.getSnapshot` → last actual reading + its real date + live estimate (`services/odometerEstimate.ts`). Never persisted. Status, Health Score, the in-app Reminders list and notifications all use it; km figures derived from it show "~".
+- **Reminders** project from the last reading's date (NOTIFICATION_ENGINE.md §4 updated).
+- **UI dates:** dashboard odometer card and odometer screen show the real reading date, plus a separately labelled "~N km estimated today" (or "rough estimate").
+- **Forms:** new fuel/maintenance logs no longer pre-fill the last reading; fuel requires an entered odometer (empty was previously submitted as 0); maintenance mileage left blank stays unknown.
+- **"Just serviced today"** records today's date and only an *entered* mileage (never the cached reading). **"Save baseline"** records the entered mileage with an unknown date instead of stamping today.
+- **Delete All Data** (T-806, service part): children-first order derived from `BACKUP_TABLE_ORDER` (now includes `builds`/`build_plan_items` — previously a FK RESTRICT failure for anyone with a Build); cancels OS notifications first; removes `documents/` files and the internal pre-restore safety snapshot after the DB wipe; reports failures. FKs stay ON.
+- **Tests:** +51 (182 total). New DB-backed service tests use `src/test/sqliteTestClient.ts` (real migrations on better-sqlite3, FKs ON).
+- **Not verified on a device** (no emulator/device in this environment).
+- **Section H follow-up (2026-09-30), all 12 addressed:** parked bikes get no invented estimate (default rate); rate windows end at the latest reading, high confidence ≤ 30 days old; `useToday()` refreshes date-dependent screens at midnight/resume; notification copy computed per fire date; Reminders never show negative km ("overdue by …"); overdue items past the 3-nag window are labelled in S-05; `formatMonthDay` is time-zone independent; `updateBike` records a changed odometer as a reading (the edit form doesn't show the field — the earlier "editable field ignored" note was inaccurate); "Just serviced today" with a mileage logs that reading (no duplicates); Health Score shows "Based on estimated mileage" only when it used an estimate; estimate strings translated (fil/vi/id/th) and read via `useStrings()`; Quick Log cards use the snapshot's `statusIsEstimate` (the S-12q sheet itself is still unbuilt). 302 tests. No schema change.
+
+- **Follow-up (2026-09-30):** Reminders bucket km items by their projected due date (was always "Later"); the planner drops entries whose fire instant has passed (spec §5 "drop past"); captions added by the estimate work moved into `strings.ts` (whole templates) and translated; dashboard tour v2 (actual vs estimated, Health Score meaning, due items & reminders, keeping data current; new `dashboard.nextMaintenance` anchor) plus a fix so a resume point saved under an older tour version is neither offered nor applied. Tour verified by engine-level flow tests + static anchor/wording checks; **not** run visually (no emulator; web preview has no bike data). 449 tests.
+
 ## Cross-cutting gaps (not owned by one milestone)
 
 - No ESLint config / CI pipeline (M0).

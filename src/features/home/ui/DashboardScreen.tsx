@@ -7,6 +7,7 @@ import { ListSection } from '@/components/ListSection';
 import { ScheduleRow } from '@/components/ScheduleRow';
 import { Screen } from '@/components/Screen';
 import { TimelineItem } from '@/components/TimelineItem';
+import { useToday } from '@/hooks/useToday';
 import { useReminderStore } from '@/stores/useReminderStore';
 import { strings } from '@/i18n/strings';
 import { formatKm, formatMoney, formatMonthDay } from '@/lib/format';
@@ -36,13 +37,15 @@ export function DashboardScreen() {
   const reminderCount = useReminderStore((s) => s.items.length);
   const reminderStatus = useReminderStore((s) => s.status);
   const loadReminders = useReminderStore((s) => s.load);
+  const reminderDay = useReminderStore((s) => s.day);
+  const today = useToday();
   const tourOffer = useTourOffer(vm.hasBike);
 
   useEffect(() => {
-    if (reminderStatus === 'idle') {
-      loadReminders();
+    if (reminderStatus === 'idle' || reminderDay !== today) {
+      loadReminders(today);
     }
-  }, [reminderStatus, loadReminders]);
+  }, [reminderStatus, reminderDay, today, loadReminders]);
 
   const goGarage = useCallback(() => router.push('/garage'), [router]);
   const goReminders = useCallback(() => router.push('/reminders'), [router]);
@@ -80,10 +83,23 @@ export function DashboardScreen() {
       />
       <GreetingBlock greeting={vm.greeting} dateLabel={vm.dateLabel} />
       <TutorialAnchor id="dashboard.healthHero">
-        <HealthHero score={vm.data.healthScore} bandId={vm.bandId} bandLabel={vm.bandLabel} onPress={goMaintenance} />
+        <HealthHero
+          score={vm.data.healthScore}
+          bandId={vm.bandId}
+          bandLabel={vm.bandLabel}
+          isEstimated={vm.data.isEstimatedScore}
+          onPress={goMaintenance}
+        />
       </TutorialAnchor>
       <TutorialAnchor id="dashboard.odometerCard">
-        <OdometerCard odometerKm={bike.odometerKm} asOfIso={bike.odometerAsOf} onUpdate={goOdometer} />
+        <OdometerCard
+          odometerKm={bike.odometerKm}
+          asOfIso={bike.odometerAsOf}
+          estimatedKm={bike.estimatedOdometerKm}
+          estimateIsRough={bike.estimateIsRough}
+          needsMoreReadings={bike.needsMoreReadings}
+          onUpdate={goOdometer}
+        />
       </TutorialAnchor>
       {vm.data.documentWarning !== undefined ? (
         <DocumentWarningBanner
@@ -91,22 +107,24 @@ export function DashboardScreen() {
           onPress={() => router.push('/documents')}
         />
       ) : null}
-      <QuickLogsSection bikeId={bike.id} currentOdometerKm={bike.odometerKm} />
-      <ListSection title={strings.dashboard.nextMaintenance.title}>
-        {vm.data.upcoming.length === 0 ? null : (
-          vm.data.upcoming.map((schedule) => (
-            <ScheduleRow
-              key={schedule.id}
-              icon={schedule.icon}
-              label={schedule.label}
-              status={schedule.status}
-              statusLabel={strings.dashboard.nextMaintenance.due[schedule.status]}
-              remainingText={schedule.remainingText}
-              onPress={() => router.push(`/maintenance/component/${schedule.id}`)}
-            />
-          ))
-        )}
-      </ListSection>
+      <QuickLogsSection bikeId={bike.id} />
+      <TutorialAnchor id="dashboard.nextMaintenance">
+        <ListSection title={strings.dashboard.nextMaintenance.title}>
+          {vm.data.upcoming.length === 0 ? null : (
+            vm.data.upcoming.map((schedule) => (
+              <ScheduleRow
+                key={schedule.id}
+                icon={schedule.icon}
+                label={schedule.label}
+                status={schedule.status}
+                statusLabel={strings.dashboard.nextMaintenance.due[schedule.status]}
+                remainingText={schedule.remainingText}
+                onPress={() => router.push(`/maintenance/component/${schedule.id}`)}
+              />
+            ))
+          )}
+        </ListSection>
+      </TutorialAnchor>
       <TutorialAnchor id="dashboard.quickActions">
         <QuickActionsGrid
           onAction={(actionId) => {

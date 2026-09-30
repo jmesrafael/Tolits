@@ -19,9 +19,14 @@ import { showToast } from '@/components/Toast';
 import { MaintenanceRepository } from '@/db/repositories/MaintenanceRepository';
 import { ScheduleRepository } from '@/db/repositories/ScheduleRepository';
 import { componentLabel } from '@/features/maintenance/componentMeta';
+import { formatOdometerReference, initialOdometerField } from '@/features/odometer/odometerText';
 import { useActiveBike } from '@/hooks/useActiveBike';
+import { useToday } from '@/hooks/useToday';
+import { interpolate } from '@/i18n/strings';
+import { useStrings } from '@/i18n/useStrings';
 import { todayIso } from '@/lib/dates';
 import { MaintenanceService } from '@/services/MaintenanceService';
+import { OdometerService } from '@/services/OdometerService';
 import { ScheduleService } from '@/services/ScheduleService';
 import { componentDefaultServiceType } from '@/db/seed/defaults';
 import { makeStyles, typeStyle } from '@/theme/styles';
@@ -44,6 +49,8 @@ export default function MaintenanceLogRoute() {
   const router = useRouter();
   const styles = useStyles();
   const { activeBike } = useActiveBike();
+  const today = useToday();
+  const strings = useStrings();
 
   const existingRecord = params.recordId !== undefined ? MaintenanceRepository.getById(params.recordId) : undefined;
   const initialScheduleId = existingRecord?.scheduleId ?? params.scheduleId ?? null;
@@ -57,13 +64,11 @@ export default function MaintenanceLogRoute() {
   const schedule = scheduleId !== null ? ScheduleRepository.getById(scheduleId) : undefined;
 
   const [date, setDate] = useState(existingRecord?.performedDate ?? todayIso());
-  const [odometer, setOdometer] = useState(
-    existingRecord?.odometerKm !== undefined && existingRecord?.odometerKm !== null
-      ? String(existingRecord.odometerKm)
-      : activeBike !== null
-        ? String(activeBike.currentOdometerKm)
-        : '',
-  );
+  // New records start empty: left blank, the service is recorded by date only (mileage unknown);
+  // the last reading is shown as a reference, never pre-filled as today's reading.
+  const [odometer, setOdometer] = useState(initialOdometerField(existingRecord?.odometerKm));
+  const odometerReference =
+    bikeId !== null ? formatOdometerReference(OdometerService.getSnapshot(bikeId, today), strings) : '';
   const [cost, setCost] = useState(
     existingRecord?.costCentavos !== undefined && existingRecord?.costCentavos !== null
       ? (existingRecord.costCentavos / 100).toFixed(2)
@@ -173,7 +178,10 @@ export default function MaintenanceLogRoute() {
       <FormField label="Date" required error={fieldErrors?.performedDate}>
         <DateField value={date} onChange={setDate} maxIso={todayIso()} />
       </FormField>
-      <FormField label="Odometer (km)" error={fieldErrors?.odometerKm}>
+      <FormField
+        label="Odometer (km)"
+        error={fieldErrors?.odometerKm}
+        hint={interpolate(strings.odometerReference.optionalHint, { reference: odometerReference })}>
         <OdoInput value={odometer} onChange={setOdometer} />
       </FormField>
       <FormField label="Service type">

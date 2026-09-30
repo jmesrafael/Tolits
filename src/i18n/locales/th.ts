@@ -19,6 +19,37 @@ type DeepPartial<T> = T extends readonly (infer U)[]
     : string;
 
 export const th: DeepPartial<typeof en> = {
+  dashboard: {
+    health: {
+      estimated: 'อ้างอิงจากระยะทางโดยประมาณ',
+    },
+    odometer: {
+      noReading: 'ยังไม่มีเลขไมล์',
+      estimated: '~{km} ประมาณการวันนี้',
+      estimatedRough: '~{km} ประมาณการคร่าวๆ วันนี้',
+      needsReading: 'บันทึกเลขไมล์อีกครั้งเพื่อประมาณระยะทาง',
+    },
+  },
+  odometerReference: {
+    none: 'ยังไม่มีเลขไมล์',
+    actual: 'เลขไมล์ล่าสุด: {km} เมื่อ {date}',
+    withEstimate: 'เลขไมล์ล่าสุด: {km} เมื่อ {date} · ~{estimate} ประมาณการวันนี้',
+    withRoughEstimate: 'เลขไมล์ล่าสุด: {km} เมื่อ {date} · ~{estimate} ประมาณการคร่าวๆ วันนี้',
+    needsReading: 'เลขไมล์ล่าสุด: {km} เมื่อ {date} · บันทึกเลขไมล์อีกครั้งเพื่อประมาณระยะทางปัจจุบัน',
+    optionalHint: '{reference} เว้นว่างไว้หากไม่ทราบเลขไมล์',
+    requiredError: 'กรอกเลขไมล์ที่แสดงบนรถของคุณ',
+  },
+  baseline: {
+    notSetUp: 'ยังไม่ได้ตั้งค่า กรอกเลขไมล์ตอนที่ทำครั้งล่าสุด หากเพิ่งทำวันนี้ ให้แตะ Just serviced today (กรอกเลขไมล์วันนี้ก่อนหากทราบ)',
+    needsKm: 'กรอกเลขไมล์ตอนที่ทำครั้งล่าสุด',
+  },
+  remindersList: {
+    notificationsEnded: 'เกินกำหนดตั้งแต่ {date} จะไม่มีการแจ้งเตือนรายการนี้อีก บันทึกเมื่อทำเสร็จแล้ว',
+  },
+  dataPrivacy: {
+    deleted: 'ลบข้อมูลทั้งหมดแล้ว',
+    deletedFilesRemain: 'ลบบันทึกทั้งหมดแล้ว แต่ไม่สามารถลบไฟล์ที่บันทึกไว้บางไฟล์ได้',
+  },
   onboarding: {
     carousel: {
       skip: 'ข้าม',
@@ -104,7 +135,7 @@ export const th: DeepPartial<typeof en> = {
     },
     offer: {
       title: 'ต้องการชมทัวร์แนะนำสั้นๆ ไหม?',
-      body: 'ใช้เวลาสองนาที ข้ามได้ทุกเมื่อ คุณยังสามารถดูซ้ำได้ภายหลังจากการตั้งค่า',
+      body: 'ใช้เวลาประมาณ 3 นาที ข้ามได้ทุกเมื่อ คุณยังสามารถดูซ้ำได้ภายหลังจากการตั้งค่า',
       start: 'เริ่มทัวร์',
       later: 'ไว้ทีหลัง',
       never: 'ไม่ต้องแสดงอีก',

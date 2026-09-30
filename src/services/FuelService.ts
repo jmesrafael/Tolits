@@ -3,7 +3,7 @@
  * Pure functions over chronological fuel rows + odometer windows.
  */
 
-import type { FuelLogRow, OdometerLogRow } from '@/db/schema';
+import type { FuelLogRow } from '@/db/schema';
 import { addDays, daysBetween } from '@/lib/dates';
 
 /** Spans with km ≤ 0 or km > 2,000 are excluded as implausible (A-07). */
@@ -84,59 +84,101 @@ export function fuelCostPerKm(
   return cost / km;
 }
 
-const DEFAULT_DAILY_KM = 25;
-const DAILY_KM_MIN = 5;
-const DAILY_KM_MAX = 300;
+export const DEFAULT_DAILY_KM_RATE = 25;
+export const MIN_DAILY_KM_RATE = 5;
+export const MAX_DAILY_KM_RATE = 300;
+/**
+ * A measured 30-day rate stays high-confidence until the latest reading is
+ * older than this; after that the rider's pattern may have changed.
+ */
+export const FRESH_READING_DAYS = 30;
 
-export interface DailyKmRate {
-  kmPerDay: number;
-  /** 'low' when the 90-day fallback or default was used (§7.5) — copy says "around". */
-  confidence: 'normal' | 'low';
+/** The minimal odometer-log shape the rate needs (OdometerLogRow satisfies it). */
+export interface RateReading {
+  effectiveKm: number;
+  recordedDate: string;
+}
+
+export interface DailyRateResult {
+  /** km/day, clamped to [5, 300]. */
+  rate: number;
+  /** 'low' when the 90-day fallback or the default was used (§7.5) — copy says "around". */
+  confidence: 'high' | 'low';
+  /** Where the rate came from: measured (30d / 90d window) or the assumed default. */
+  source: 'window30' | 'window90' | 'default';
 }
 
 /**
- * Daily-km rate (§7.5): (max effective − min effective) / days over trailing
- * 30 days of odometer logs; < 2 readings → widen to 90; still < 2 → 25 km/day.
- * Clamped to [5, 300].
+ * Km/day measured over one window: distance between the lowest and highest
+ * reading ÷ days between the first and last reading date. Null when the window
+ * has fewer than 2 readings on distinct dates — same-day readings carry no
+ * elapsed-time information, so they can't measure a rate.
  */
-export function dailyKmRate(
-  logsInWindow: (fromIso: string) => readonly OdometerLogRow[],
-  todayIso: string,
-): DailyKmRate {
-  for (const { days, confidence } of [
-    { days: 30, confidence: 'normal' as const },
-    { days: 90, confidence: 'low' as const },
-  ]) {
-    const logs = logsInWindow(addDays(todayIso, -days));
-    if (logs.length >= 2) {
-      const kms = logs.map((l) => l.effectiveKm);
-      const dates = logs.map((l) => l.recordedDate);
-      const spanKm = Math.max(...kms) - Math.min(...kms);
-      const spanDays = Math.max(
-        1,
-        daysBetween(dates.reduce((a, b) => (a < b ? a : b)), dates.reduce((a, b) => (a > b ? a : b))),
-      );
-      const rate = spanKm / spanDays;
-      return { kmPerDay: clampRate(rate), confidence };
-    }
+function rateOverWindow(readings: readonly RateReading[]): number | null {
+  if (readings.length < 2) {
+    return null;
   }
-  return { kmPerDay: DEFAULT_DAILY_KM, confidence: 'low' };
+  const dates = readings.map((r) => r.recordedDate);
+  const firstDate = dates.reduce((a, b) => (a < b ? a : b));
+  const lastDate = dates.reduce((a, b) => (a > b ? a : b));
+  const spanDays = daysBetween(firstDate, lastDate);
+  if (spanDays <= 0) {
+    return null;
+  }
+  const kms = readings.map((r) => r.effectiveKm);
+  return (Math.max(...kms) - Math.min(...kms)) / spanDays;
 }
 
 function clampRate(rate: number): number {
-  return Math.min(DAILY_KM_MAX, Math.max(DAILY_KM_MIN, rate));
+  return Math.min(MAX_DAILY_KM_RATE, Math.max(MIN_DAILY_KM_RATE, rate));
 }
 
-/** Quick Log odometer projection: current + rate × days since last reading, rounded to 10 km. */
+/**
+ * Daily-km rate (§7.5) — the ONE implementation, used by reminder projection,
+ * status/Health Score estimates, and the estimated-odometer display.
+ * 30-day window of odometer logs ending at the LATEST reading (the caller
+ * anchors the windows there, so time passing alone doesn't empty them); not
+ * measurable → widen to 90 days; still not measurable → default 25 km/day.
+ * Clamped to [5, 300]. The rate is the distance ÷ the days actually spanned by
+ * the readings (not ÷ the full window length, which under-states sparse loggers).
+ * Confidence: 'high' only for a measured 30-day rate whose latest reading is at
+ * most FRESH_READING_DAYS old (`daysSinceLastReading`, omitted = fresh).
+ */
+export function computeDailyKmRate(
+  logs30d: readonly RateReading[],
+  logs90d: readonly RateReading[],
+  daysSinceLastReading: number | null = null,
+): DailyRateResult {
+  const r30 = rateOverWindow(logs30d);
+  if (r30 !== null) {
+    const fresh = daysSinceLastReading === null || daysSinceLastReading <= FRESH_READING_DAYS;
+    return { rate: clampRate(r30), confidence: fresh ? 'high' : 'low', source: 'window30' };
+  }
+  const r90 = rateOverWindow(logs90d);
+  if (r90 !== null) {
+    return { rate: clampRate(r90), confidence: 'low', source: 'window90' };
+  }
+  return { rate: DEFAULT_DAILY_KM_RATE, confidence: 'low', source: 'default' };
+}
+
+/**
+ * Estimated current odometer (NOTIFICATION_ENGINE.md §4): last ACTUAL reading
+ * + rate × days elapsed since that reading's date, rounded to 10 km. With no
+ * reading date there is nothing to project from, so the actual value is
+ * returned unchanged. Computed live; never persisted as a reading.
+ */
 export function projectOdometer(
-  currentEffective: number,
+  lastActualKm: number,
   lastReadingDate: string | null,
-  rate: DailyKmRate,
+  rate: DailyRateResult,
   todayIso: string,
 ): number {
   if (lastReadingDate === null) {
-    return currentEffective;
+    return lastActualKm;
   }
   const days = Math.max(0, daysBetween(lastReadingDate, todayIso));
-  return Math.round((currentEffective + rate.kmPerDay * days) / 10) * 10;
+  if (days === 0) {
+    return lastActualKm;
+  }
+  return Math.round((lastActualKm + rate.rate * days) / 10) * 10;
 }

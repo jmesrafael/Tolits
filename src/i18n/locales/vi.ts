@@ -19,6 +19,37 @@ type DeepPartial<T> = T extends readonly (infer U)[]
     : string;
 
 export const vi: DeepPartial<typeof en> = {
+  dashboard: {
+    health: {
+      estimated: 'Dựa trên quãng đường ước tính',
+    },
+    odometer: {
+      noReading: 'Chưa có số ODO',
+      estimated: '~{km} ước tính hôm nay',
+      estimatedRough: '~{km} ước tính sơ bộ hôm nay',
+      needsReading: 'Nhập thêm một số ODO để ước tính quãng đường',
+    },
+  },
+  odometerReference: {
+    none: 'Chưa có số ODO',
+    actual: 'Số ODO gần nhất: {km} ngày {date}',
+    withEstimate: 'Số ODO gần nhất: {km} ngày {date} · ~{estimate} ước tính hôm nay',
+    withRoughEstimate: 'Số ODO gần nhất: {km} ngày {date} · ~{estimate} ước tính sơ bộ hôm nay',
+    needsReading: 'Số ODO gần nhất: {km} ngày {date} · nhập thêm một số ODO để ước tính quãng đường hiện tại',
+    optionalHint: '{reference}. Để trống nếu bạn không biết số ODO.',
+    requiredError: 'Nhập số ODO hiển thị trên xe của bạn.',
+  },
+  baseline: {
+    notSetUp: 'Chưa thiết lập. Nhập số ODO lúc thực hiện lần gần nhất. Nếu vừa làm hôm nay, nhấn Just serviced today (nhập số ODO hôm nay trước nếu bạn biết).',
+    needsKm: 'Nhập số ODO lúc thực hiện lần gần nhất',
+  },
+  remindersList: {
+    notificationsEnded: 'Quá hạn từ {date}. Sẽ không gửi thêm thông báo cho mục này; hãy ghi lại khi đã làm xong.',
+  },
+  dataPrivacy: {
+    deleted: 'Đã xóa toàn bộ dữ liệu',
+    deletedFilesRemain: 'Đã xóa toàn bộ bản ghi, nhưng một số tệp đã lưu không thể xóa',
+  },
   onboarding: {
     carousel: {
       skip: 'Bỏ qua',
@@ -104,7 +135,7 @@ export const vi: DeepPartial<typeof en> = {
     },
     offer: {
       title: 'Bạn có muốn xem hướng dẫn nhanh không?',
-      body: 'Chỉ hai phút, có thể bỏ qua bất cứ lúc nào. Bạn cũng có thể xem lại sau trong Cài đặt.',
+      body: 'Khoảng 3 phút, có thể bỏ qua bất cứ lúc nào. Bạn cũng có thể xem lại sau trong Cài đặt.',
       start: 'Bắt đầu hướng dẫn',
       later: 'Để sau',
       never: 'Không hiện lại nữa',

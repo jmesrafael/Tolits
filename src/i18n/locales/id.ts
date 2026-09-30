@@ -19,6 +19,37 @@ type DeepPartial<T> = T extends readonly (infer U)[]
     : string;
 
 export const id: DeepPartial<typeof en> = {
+  dashboard: {
+    health: {
+      estimated: 'Berdasarkan perkiraan jarak tempuh',
+    },
+    odometer: {
+      noReading: 'Belum ada pembacaan',
+      estimated: '~{km} perkiraan hari ini',
+      estimatedRough: '~{km} perkiraan kasar hari ini',
+      needsReading: 'Tambahkan satu pembacaan lagi untuk memperkirakan jarak tempuh',
+    },
+  },
+  odometerReference: {
+    none: 'Belum ada pembacaan odometer',
+    actual: 'Pembacaan terakhir: {km} pada {date}',
+    withEstimate: 'Pembacaan terakhir: {km} pada {date} · ~{estimate} perkiraan hari ini',
+    withRoughEstimate: 'Pembacaan terakhir: {km} pada {date} · ~{estimate} perkiraan kasar hari ini',
+    needsReading: 'Pembacaan terakhir: {km} pada {date} · tambahkan satu pembacaan lagi untuk memperkirakan jarak tempuh saat ini',
+    optionalHint: '{reference}. Kosongkan jika Anda tidak tahu angkanya.',
+    requiredError: 'Masukkan angka odometer yang tertera di motor Anda.',
+  },
+  baseline: {
+    notSetUp: 'Belum diatur. Masukkan angka odometer saat terakhir kali dilakukan. Jika dilakukan hari ini, ketuk Just serviced today (masukkan angka hari ini terlebih dahulu jika Anda tahu).',
+    needsKm: 'Masukkan angka odometer saat terakhir kali dilakukan',
+  },
+  remindersList: {
+    notificationsEnded: 'Terlambat sejak {date}. Tidak akan ada notifikasi lagi untuk ini; catat setelah selesai dikerjakan.',
+  },
+  dataPrivacy: {
+    deleted: 'Semua data telah dihapus',
+    deletedFilesRemain: 'Semua catatan telah dihapus, tetapi beberapa file tersimpan tidak dapat dihapus',
+  },
   onboarding: {
     carousel: {
       skip: 'Lewati',
@@ -104,7 +135,7 @@ export const id: DeepPartial<typeof en> = {
     },
     offer: {
       title: 'Ingin tur singkat?',
-      body: 'Dua menit, bisa dilewati kapan saja. Anda juga bisa memutarnya lagi nanti dari Pengaturan.',
+      body: 'Sekitar 3 menit, bisa dilewati kapan saja. Anda juga bisa memutarnya lagi nanti dari Pengaturan.',
       start: 'Mulai tur',
       later: 'Nanti saja',
       never: 'Jangan tampilkan lagi',

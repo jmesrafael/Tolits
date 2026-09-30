@@ -114,3 +114,17 @@ export function computeHealthScore(
     isPartial: enabled.length > 0 && items.length / enabled.length < PARTIAL_THRESHOLD,
   };
 }
+
+/**
+ * Whether the score depends on current mileage at all: true when any scored
+ * item has a km interval with a km anchor (its km fraction uses the current
+ * odometer). Pure read of the result — no change to the score formula. Used to
+ * label the score "estimated" only when the mileage it used was an estimate.
+ */
+export function scoreUsesMileage(result: HealthScoreResult, schedules: readonly ScheduleRow[]): boolean {
+  const byId = new Map(schedules.map((s) => [s.id, s]));
+  return result.items.some((item) => {
+    const schedule = byId.get(item.scheduleId);
+    return schedule !== undefined && schedule.intervalKm !== null && schedule.anchorOdometerKm !== null;
+  });
+}

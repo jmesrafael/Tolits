@@ -118,12 +118,13 @@ export function startTutorial(id: string, options: StartOptions = {}): boolean {
   }
 
   const store = useTutorialStore.getState();
-  const record = reconcileRecordVersion(
-    store.progress.tutorials[id] ?? defaultRecord(config.version),
-    config.version,
-  );
+  const stored = store.progress.tutorials[id];
+  const record = reconcileRecordVersion(stored ?? defaultRecord(config.version), config.version);
+  // A resume point saved under an older config version indexes a different
+  // step list — start over rather than land on an unrelated step.
+  const resumeValid = stored === undefined || stored.version === config.version;
   const startIndex = Math.min(
-    Math.max(options.resumeFrom ?? 0, 0),
+    Math.max(resumeValid ? (options.resumeFrom ?? 0) : 0, 0),
     resolvedSteps.length - 1,
   );
   store.updateTutorialRecord(id, {

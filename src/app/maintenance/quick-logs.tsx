@@ -52,7 +52,7 @@ export default function QuickLogsManageRoute() {
   const { tokens } = useTheme();
   const { activeBike } = useActiveBike();
   const [query, setQuery] = useState('');
-  const { items } = useSchedules(activeBike?.id ?? null, activeBike?.currentOdometerKm ?? 0);
+  const { items } = useSchedules(activeBike?.id ?? null);
   const [refreshKey, setRefreshKey] = useState(0);
   void refreshKey;
 

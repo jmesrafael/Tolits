@@ -4,13 +4,20 @@ import type { TutorialConfig } from '../types';
 const t = strings.tutorial.dashboard;
 
 /**
- * The main tour: dashboard highlights, one interactive cross-screen step into
- * the Maintenance tab. Requires an active bike (offered right after setup).
+ * The main tour — the core workflow in one pass: the bike, actual vs estimated
+ * mileage, what the Health Score means, due items and reminders, logging, the
+ * component list, and the two habits that keep data current. One interactive
+ * cross-screen step into the Maintenance tab. Requires an active bike (offered
+ * right after setup).
+ *
+ * Version 2 (2026-09-30): steps added/reordered. The bump discards saved
+ * mid-tour resume points (they index the old list); completed/skipped
+ * verdicts are kept, so finished users are never re-prompted.
  */
 export const dashboardTour: TutorialConfig = {
   id: 'dashboard',
   kind: 'tour',
-  version: 1,
+  version: 2,
   title: t.title,
   entryRoute: '/',
   condition: (ctx) => ctx.hasActiveBike,
@@ -44,6 +51,16 @@ export const dashboardTour: TutorialConfig = {
       condition: (ctx) => ctx.bikeCount <= 1,
     },
     {
+      id: 'odometer',
+      route: '/',
+      anchorId: 'dashboard.odometerCard',
+      shape: { kind: 'rect' },
+      title: t.odometer.title,
+      body: t.odometer.body,
+      icon: 'odometer',
+      advance: { type: 'next' },
+    },
+    {
       id: 'health',
       route: '/',
       anchorId: 'dashboard.healthHero',
@@ -54,13 +71,13 @@ export const dashboardTour: TutorialConfig = {
       advance: { type: 'next' },
     },
     {
-      id: 'odometer',
+      id: 'due-items',
       route: '/',
-      anchorId: 'dashboard.odometerCard',
+      anchorId: 'dashboard.nextMaintenance',
       shape: { kind: 'rect' },
-      title: t.odometer.title,
-      body: t.odometer.body,
-      icon: 'odometer',
+      title: t.dueItems.title,
+      body: t.dueItems.body,
+      icon: 'reminder',
       advance: { type: 'next' },
     },
     {
@@ -90,6 +107,14 @@ export const dashboardTour: TutorialConfig = {
       shape: { kind: 'rect' },
       title: t.maintenanceList.title,
       body: t.maintenanceList.body,
+      advance: { type: 'next' },
+    },
+    {
+      id: 'keep-current',
+      route: '/maintenance',
+      title: t.keepCurrent.title,
+      body: t.keepCurrent.body,
+      icon: 'checkCircle',
       advance: { type: 'next' },
     },
   ],

@@ -18,9 +18,12 @@ import { MotorcycleRepository } from '@/db/repositories/MotorcycleRepository';
 import { ScheduleRepository } from '@/db/repositories/ScheduleRepository';
 import { componentIcon, componentLabel } from '@/features/maintenance/componentMeta';
 import { formatRemaining } from '@/features/maintenance/remainingText';
+import { formatOdometerReference, parseOdometerField } from '@/features/odometer/odometerText';
+import { useToday } from '@/hooks/useToday';
 import { strings } from '@/i18n/strings';
-import { todayIso } from '@/lib/dates';
+import { useStrings } from '@/i18n/useStrings';
 import { formatCategoryName, formatMoney, formatMonthDay } from '@/lib/format';
+import { OdometerService } from '@/services/OdometerService';
 import { ScheduleService } from '@/services/ScheduleService';
 import { computeScheduleStatus } from '@/services/StatusService';
 import { makeStyles, typeStyle } from '@/theme/styles';
@@ -47,12 +50,17 @@ export default function ComponentDetailRoute() {
   const schedule = ScheduleRepository.getById(id);
   const bike = schedule !== undefined ? MotorcycleRepository.getById(schedule.motorcycleId) : undefined;
 
+  // Last actual reading + live estimate — the same current mileage the dashboard uses.
+  const today = useToday(); // re-renders at midnight so the estimate follows the date
+  const localized = useStrings();
+  const odometer = bike !== undefined ? OdometerService.getSnapshot(bike.id, today) : null;
+
   const status = useMemo(() => {
     if (schedule === undefined || bike === undefined) {
       return null;
     }
-    return computeScheduleStatus(schedule, bike.currentOdometerKm, todayIso());
-  }, [schedule, bike, refreshKey]);
+    return computeScheduleStatus(schedule, odometer?.statusKm ?? bike.currentOdometerKm, today);
+  }, [schedule, bike, odometer, today, refreshKey]);
 
   const records = useMemo(
     () => (schedule !== undefined ? MaintenanceRepository.listByBike(schedule.motorcycleId, { scheduleId: id, limit: 20 }) : []),
@@ -80,15 +88,33 @@ export default function ComponentDetailRoute() {
   const componentType = schedule.componentType as ComponentType;
   const label = componentLabel(componentType, schedule.customName);
 
+  // "When was this last done?" — only the entered mileage is known; the date is
+  // left unknown rather than stamped as today.
   const handleBaseline = () => {
+    const enteredKm = parseOdometerField(baselineOdo);
+    if (enteredKm === null) {
+      showToast({ kind: 'info', message: localized.baseline.needsKm });
+      return;
+    }
     const result = ScheduleService.setBaseline({
       scheduleId: id,
-      lastDoneOdometerKm: baselineOdo !== '' ? Number(baselineOdo) : null,
-      lastDoneDate: todayIso(),
+      lastDoneOdometerKm: enteredKm,
+      lastDoneDate: null,
     });
     if (result.ok) {
       setRefreshKey((k) => k + 1);
       showToast('Baseline saved');
+    }
+  };
+
+  // Today's date is known; mileage only if the user typed today's reading (never the stale cache).
+  const handleServicedToday = () => {
+    const result = ScheduleService.markServicedToday(id, today, parseOdometerField(baselineOdo));
+    if (result.ok) {
+      setRefreshKey((k) => k + 1);
+      showToast('Baseline saved');
+    } else {
+      showToast({ kind: 'error', message: result.error.message });
     }
   };
 
@@ -116,7 +142,7 @@ export default function ComponentDetailRoute() {
       <Card>
         <View style={styles.row}>
           <StatusPill status={status.status} label={strings.dashboard.nextMaintenance.due[status.status]} />
-          <Text style={styles.caption}>{formatRemaining(status)}</Text>
+          <Text style={styles.caption}>{formatRemaining(status, odometer?.statusIsEstimate ?? false)}</Text>
         </View>
         <Text style={styles.caption}>
           Interval: {schedule.intervalKm !== null ? `${schedule.intervalKm} km` : ''}
@@ -127,25 +153,13 @@ export default function ComponentDetailRoute() {
 
       {status.anchored === false ? (
         <Card>
-          <Text style={styles.caption}>Not set up yet. When was this last done?</Text>
+          <Text style={styles.caption}>{localized.baseline.notSetUp}</Text>
+          <Text style={styles.caption}>{formatOdometerReference(odometer, localized)}</Text>
           <View style={styles.baselineRow}>
             <OdoInput value={baselineOdo} onChange={setBaselineOdo} />
             <PrimaryButton label="Save baseline" onPress={handleBaseline} />
           </View>
-          <SecondaryButton
-            label="Just serviced today"
-            onPress={() => {
-              const result = ScheduleService.setBaseline({
-                scheduleId: id,
-                lastDoneOdometerKm: bike.currentOdometerKm,
-                lastDoneDate: todayIso(),
-              });
-              if (result.ok) {
-                setRefreshKey((k) => k + 1);
-                showToast('Baseline saved');
-              }
-            }}
-          />
+          <SecondaryButton label="Just serviced today" onPress={handleServicedToday} />
         </Card>
       ) : null}
 

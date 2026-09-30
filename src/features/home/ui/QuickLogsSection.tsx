@@ -14,7 +14,6 @@ import { QuickLogCard } from './QuickLogCard';
 
 export interface QuickLogsSectionProps {
   bikeId: string;
-  currentOdometerKm: number;
 }
 
 const useStyles = makeStyles((t) =>
@@ -39,10 +38,12 @@ const useStyles = makeStyles((t) =>
  * app resets these cards' countdown for free (ScheduleService already
  * re-anchors on every record save/edit/delete).
  */
-export function QuickLogsSection({ bikeId, currentOdometerKm }: QuickLogsSectionProps) {
+export function QuickLogsSection({ bikeId }: QuickLogsSectionProps) {
   const styles = useStyles();
   const router = useRouter();
-  const { items } = useSchedules(bikeId, currentOdometerKm);
+  // Same snapshot-derived estimate flag as the dashboard/maintenance screens.
+  const { items, odometer, today } = useSchedules(bikeId);
+  const kmIsEstimate = odometer?.statusIsEstimate ?? false;
   const pinned = items
     .filter((i) => i.schedule.isPinned === 1)
     .sort((a, b) => a.schedule.pinnedSortOrder - b.schedule.pinnedSortOrder);
@@ -80,7 +81,7 @@ export function QuickLogsSection({ bikeId, currentOdometerKm }: QuickLogsSection
                 label={componentLabel(componentType, schedule.customName)}
                 lastDate={latest?.performedDate ?? null}
                 lastOdometerKm={latest?.odometerKm ?? null}
-                dueText={formatQuickLogDue(status)}
+                dueText={formatQuickLogDue(status, kmIsEstimate, today)}
                 status={status.status}
                 statusLabel={strings.dashboard.nextMaintenance.due[status.status]}
                 onPress={() => router.push(`/maintenance/component/${schedule.id}`)}

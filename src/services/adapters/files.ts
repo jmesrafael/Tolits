@@ -53,4 +53,16 @@ export const FileAdapter = {
       file.delete();
     }
   },
+
+  /**
+   * Delete-all-data (SECURITY.md §6): removes every stored user file — all
+   * documents, receipts and photos live under this one directory. It is
+   * recreated lazily on the next import. Throws on file-system failure.
+   */
+  deleteAllStoredFiles(): void {
+    const dir = new Directory(Paths.document, DOCUMENTS_DIR);
+    if (dir.exists) {
+      dir.delete();
+    }
+  },
 };

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Text } from 'react-native';
 
 import { OdoInput } from '@/components/OdoInput';
@@ -8,8 +8,10 @@ import { Screen } from '@/components/Screen';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SecondaryButton } from '@/components/SecondaryButton';
 import { showToast } from '@/components/Toast';
+import { formatOdometerReference } from '@/features/odometer/odometerText';
 import { useActiveBike } from '@/hooks/useActiveBike';
-import { formatKm, formatMonthDay } from '@/lib/format';
+import { useToday } from '@/hooks/useToday';
+import { useStrings } from '@/i18n/useStrings';
 import { todayIso } from '@/lib/dates';
 import { OdometerService } from '@/services/OdometerService';
 import { makeStyles, typeStyle } from '@/theme/styles';
@@ -28,6 +30,12 @@ export default function OdometerUpdateRoute() {
   const [reading, setReading] = useState('');
   const [violation, setViolation] = useState<string>();
   const [showMeterReplace, setShowMeterReplace] = useState(false);
+  const today = useToday();
+  const strings = useStrings();
+  const snapshot = useMemo(
+    () => (activeBike !== null ? OdometerService.getSnapshot(activeBike.id, today) : null),
+    [activeBike, today],
+  );
 
   if (activeBike === null) {
     return (
@@ -62,9 +70,7 @@ export default function OdometerUpdateRoute() {
   return (
     <Screen>
       <ScreenHeader title="Update odometer" />
-      <Text style={styles.caption}>
-        Current: {formatKm(activeBike.currentOdometerKm)} as of {formatMonthDay(todayIso())}
-      </Text>
+      <Text style={styles.caption}>{formatOdometerReference(snapshot, strings)}</Text>
       <OdoInput value={reading} onChange={setReading} lastReadingKm={activeBike.currentOdometerKm} />
       {violation !== undefined ? <Text style={styles.error}>{violation}</Text> : null}
       <PrimaryButton label="Save" onPress={handleSave} disabled={reading === ''} />

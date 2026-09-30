@@ -34,7 +34,8 @@ export default function MaintenanceRoute() {
   const styles = useStyles();
   const router = useRouter();
   const { activeBike } = useActiveBike();
-  const { items } = useSchedules(activeBike?.id ?? null, activeBike?.currentOdometerKm ?? 0);
+  const { items, odometer } = useSchedules(activeBike?.id ?? null);
+  const kmIsEstimate = odometer?.statusIsEstimate ?? false;
   const [query, setQuery] = useState('');
 
   if (activeBike === null) {
@@ -98,7 +99,7 @@ export default function MaintenanceRoute() {
               label={componentLabel(componentType, item.schedule.customName)}
               status={item.status.status}
               statusLabel={strings.dashboard.nextMaintenance.due[item.status.status]}
-              remainingText={formatRemaining(item.status)}
+              remainingText={formatRemaining(item.status, kmIsEstimate)}
               onPress={() => router.push(`/maintenance/component/${item.schedule.id}`)}
             />
           );
@@ -113,7 +114,7 @@ export default function MaintenanceRoute() {
             label={componentLabel(componentType, item.schedule.customName)}
             status={item.status.status}
             statusLabel={strings.dashboard.nextMaintenance.due[item.status.status]}
-            remainingText={formatRemaining(item.status)}
+            remainingText={formatRemaining(item.status, kmIsEstimate)}
             onPress={() => router.push(`/maintenance/component/${item.schedule.id}`)}
           />
         );

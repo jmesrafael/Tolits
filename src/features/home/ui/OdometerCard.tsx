@@ -3,14 +3,22 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/Card';
 import { Icon } from '@/components/Icon';
 import { SecondaryButton } from '@/components/SecondaryButton';
-import { interpolate, strings } from '@/i18n/strings';
+import { interpolate } from '@/i18n/strings';
+import { useStrings } from '@/i18n/useStrings';
 import { formatKm, formatMonthDay } from '@/lib/format';
 import { makeStyles, typeStyle } from '@/theme/styles';
 import { useTheme } from '@/theme/useTheme';
 
 export interface OdometerCardProps {
+  /** Last actual reading. */
   odometerKm: number;
-  asOfIso: string;
+  /** Date of that actual reading (null = unknown). */
+  asOfIso: string | null;
+  /** Live estimate for today, shown separately and labelled; null when the reading is current. */
+  estimatedKm: number | null;
+  estimateIsRough: boolean;
+  /** No riding history yet: ask for another reading instead of showing an invented estimate. */
+  needsMoreReadings: boolean;
   onUpdate: () => void;
 }
 
@@ -42,8 +50,17 @@ const useStyles = makeStyles((t) =>
   }),
 );
 
-export function OdometerCard({ odometerKm, asOfIso, onUpdate }: OdometerCardProps) {
+export function OdometerCard({
+  odometerKm,
+  asOfIso,
+  estimatedKm,
+  estimateIsRough,
+  needsMoreReadings,
+  onUpdate,
+}: OdometerCardProps) {
   const styles = useStyles();
+  // Localized dictionary (English + locale overrides) — the static export is English-only.
+  const strings = useStrings();
   const { tokens } = useTheme();
 
   return (
@@ -56,8 +73,20 @@ export function OdometerCard({ odometerKm, asOfIso, onUpdate }: OdometerCardProp
           <Text style={styles.label}>{strings.dashboard.odometer.title}</Text>
           <Text style={styles.value}>{formatKm(odometerKm)}</Text>
           <Text style={styles.asOf}>
-            {interpolate(strings.dashboard.odometer.asOf, { date: formatMonthDay(asOfIso) })}
+            {asOfIso !== null
+              ? interpolate(strings.dashboard.odometer.asOf, { date: formatMonthDay(asOfIso) })
+              : strings.dashboard.odometer.noReading}
           </Text>
+          {estimatedKm !== null ? (
+            <Text style={styles.asOf}>
+              {interpolate(
+                estimateIsRough ? strings.dashboard.odometer.estimatedRough : strings.dashboard.odometer.estimated,
+                { km: formatKm(estimatedKm) },
+              )}
+            </Text>
+          ) : needsMoreReadings ? (
+            <Text style={styles.asOf}>{strings.dashboard.odometer.needsReading}</Text>
+          ) : null}
         </View>
         <SecondaryButton label={strings.dashboard.odometer.update} onPress={onUpdate} size="sm" />
       </View>

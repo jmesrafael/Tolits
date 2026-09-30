@@ -177,3 +177,15 @@ export function createInternalSafetySnapshot(): Result<string> {
     }
   });
 }
+
+/**
+ * Delete-all-data (SECURITY.md §6, "nothing retained anywhere"): removes the
+ * internal pre-restore safety snapshot, which is a full copy of the user's
+ * data. Throws on file-system failure; the caller decides how to report it.
+ */
+export function deleteInternalBackups(): void {
+  const dir = new Directory(Paths.document, INTERNAL_BACKUPS_DIR);
+  if (dir.exists) {
+    dir.delete();
+  }
+}

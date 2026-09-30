@@ -2,9 +2,11 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 import { useTutorialStore } from '@/stores/useTutorialStore';
+import { dashboardTour } from '@/tutorial/configs/dashboard';
 import { startTutorial } from '@/tutorial/engine';
+import { decideTourPrompt } from '@/tutorial/tourPrompt';
 
-const DASHBOARD_TOUR_ID = 'dashboard';
+const DASHBOARD_TOUR_ID = dashboardTour.id;
 const OFFER_DELAY_MS = 600;
 
 /** Ask at most once per app session — "Not now" must never turn into nagging. */
@@ -35,19 +37,19 @@ export function useTourOffer(hasBike: boolean): TourOfferState {
   useFocusEffect(
     useCallback(() => {
       const { progress, phase, hydrated } = useTutorialStore.getState();
-      if (promptedThisSession || !hydrated || phase !== 'idle' || !hasBike) {
+      const decision = decideTourPrompt({
+        progress,
+        hydrated,
+        phase,
+        hasBike,
+        promptedThisSession,
+        tourId: DASHBOARD_TOUR_ID,
+        tourVersion: dashboardTour.version,
+      });
+      if (decision === null) {
         return;
       }
-      if (progress.welcome !== 'completed') {
-        return;
-      }
-      const record = progress.tutorials[DASHBOARD_TOUR_ID];
-      const wantsOffer = progress.tourOffer === 'unseen';
-      const wantsResume =
-        !wantsOffer && record?.status === 'in_progress' && record.stepIndex > 0;
-      if (!wantsOffer && !wantsResume) {
-        return;
-      }
+      const wantsOffer = decision === 'offer';
       const timer = setTimeout(() => {
         promptedThisSession = true;
         if (wantsOffer) {

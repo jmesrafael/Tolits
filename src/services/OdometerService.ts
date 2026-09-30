@@ -8,9 +8,11 @@ import { inTransaction } from '@/db/client';
 import { MotorcycleRepository } from '@/db/repositories/MotorcycleRepository';
 import { OdometerRepository } from '@/db/repositories/OdometerRepository';
 import type { OdometerLogRow } from '@/db/schema';
+import { addDays } from '@/lib/dates';
 import { emitDomainEvent } from '@/lib/events';
 import { appError, err, ok, type Result } from '@/lib/result';
 import type { OdometerSource } from '@/types/enums';
+import { buildOdometerSnapshot, type OdometerSnapshot } from './odometerEstimate';
 import { odometerReadingInput } from './validation/schemas';
 import { guardService, validateWith } from './serviceUtils';
 
@@ -60,6 +62,30 @@ function violationError(violation: MonotonicityViolation) {
 }
 
 export const OdometerService = {
+  /**
+   * Last actual reading + its recorded date + the live estimate for today
+   * (read-only — nothing is persisted). Every screen and the reminder planner
+   * read "current mileage" through this so they agree.
+   */
+  getSnapshot(motorcycleId: string, today: string): OdometerSnapshot | null {
+    const bike = MotorcycleRepository.getById(motorcycleId);
+    if (bike === undefined) {
+      return null;
+    }
+    const latest = OdometerRepository.latest(motorcycleId);
+    // Rate windows end at the latest reading, not today: a regular rider's
+    // history shouldn't fall out of the window just because days passed.
+    // Staleness is judged separately (FRESH_READING_DAYS in computeDailyKmRate).
+    const windowEnd = latest?.recordedDate ?? today;
+    return buildOdometerSnapshot(
+      bike.currentOdometerKm,
+      latest?.recordedDate ?? null,
+      OdometerRepository.listInWindow(motorcycleId, addDays(windowEnd, -30), windowEnd),
+      OdometerRepository.listInWindow(motorcycleId, addDays(windowEnd, -90), windowEnd),
+      today,
+    );
+  },
+
   /**
    * Pre-validates a raw reading for a bike+date (used by every odometer-bearing
    * form before save). Returns the violation for fix-it UI, or the effective km.

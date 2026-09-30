@@ -10,8 +10,12 @@ import { SecondaryButton } from '@/components/SecondaryButton';
 import { ListSkeleton } from '@/components/Skeleton';
 import { showToast } from '@/components/Toast';
 import { componentIcon, componentLabel } from '@/features/maintenance/componentMeta';
-import { strings } from '@/i18n/strings';
-import { addDays, todayIso } from '@/lib/dates';
+import { formatRemaining } from '@/features/maintenance/remainingText';
+import { useToday } from '@/hooks/useToday';
+import { interpolate, strings } from '@/i18n/strings';
+import { useStrings } from '@/i18n/useStrings';
+import { addDays } from '@/lib/dates';
+import { formatMonthDay } from '@/lib/format';
 import { ScheduleService } from '@/services/ScheduleService';
 import { useReminderStore, type ReminderItem } from '@/stores/useReminderStore';
 import { makeStyles, typeStyle } from '@/theme/styles';
@@ -21,6 +25,7 @@ const useStyles = makeStyles((t) =>
   StyleSheet.create({
     sectionTitle: { ...typeStyle(t.type.h2, t.text.primary), marginTop: t.space.s4, paddingHorizontal: t.space.s1 },
     itemGroup: { gap: t.space.s1 },
+    note: { ...typeStyle(t.type.caption, t.text.tertiary), paddingHorizontal: t.space.s4 },
   }),
 );
 
@@ -37,12 +42,15 @@ export default function RemindersRoute() {
   const items = useReminderStore((s) => s.items);
   const status = useReminderStore((s) => s.status);
   const load = useReminderStore((s) => s.load);
+  const day = useReminderStore((s) => s.day);
+  const today = useToday();
+  const localized = useStrings();
 
   useEffect(() => {
-    if (status === 'idle') {
-      load();
+    if (status === 'idle' || day !== today) {
+      load(today);
     }
-  }, [status, load]);
+  }, [status, day, today, load]);
 
   if (status === 'idle') {
     return (
@@ -86,22 +94,24 @@ export default function RemindersRoute() {
                     label={`${item.bikeNickname} · ${componentLabel(componentType, item.schedule.customName)}`}
                     status={item.bucket === 'overdue' ? 'overdue' : 'dueSoon'}
                     statusLabel={strings.dashboard.nextMaintenance.due[item.bucket === 'overdue' ? 'overdue' : 'dueSoon']}
-                    remainingText={
-                      item.remainingKm !== null
-                        ? `in ${item.remainingKm} km`
-                        : item.remainingDays !== null
-                          ? `in ${item.remainingDays} days`
-                          : ''
-                    }
+                    remainingText={formatRemaining(item.status, item.kmIsEstimate)}
                     onPress={() => router.push(`/maintenance/log?scheduleId=${item.schedule.id}`)}
                   />
+                  {item.overdueSince !== null && item.notificationsEnded ? (
+                    // Nag policy (3 weekly notifications) is kept; the list says when they've stopped.
+                    <Text style={styles.note}>
+                      {interpolate(localized.remindersList.notificationsEnded, {
+                        date: formatMonthDay(item.overdueSince),
+                      })}
+                    </Text>
+                  ) : null}
                   {bucket !== 'overdue' ? (
                     <SecondaryButton
                       label="Snooze 1 week"
                       size="sm"
                       onPress={() => {
-                        ScheduleService.snooze(item.schedule.id, addDays(todayIso(), 7));
-                        load();
+                        ScheduleService.snooze(item.schedule.id, addDays(today, 7));
+                        load(today);
                         showToast({ kind: 'info', message: 'Snoozed for 1 week' });
                       }}
                     />

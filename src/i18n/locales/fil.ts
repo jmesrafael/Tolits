@@ -20,6 +20,37 @@ type DeepPartial<T> = T extends readonly (infer U)[]
     : string;
 
 export const fil: DeepPartial<typeof en> = {
+  dashboard: {
+    health: {
+      estimated: 'Batay sa tantiyang mileage',
+    },
+    odometer: {
+      noReading: 'Wala pang reading',
+      estimated: '~{km} tantiya ngayon',
+      estimatedRough: '~{km} rough estimate lang ngayon',
+      needsReading: 'Mag-log ng isa pang reading para ma-estimate ang mileage',
+    },
+  },
+  odometerReference: {
+    none: 'Wala pang odometer reading',
+    actual: 'Huling reading: {km} noong {date}',
+    withEstimate: 'Huling reading: {km} noong {date} · ~{estimate} tantiya ngayon',
+    withRoughEstimate: 'Huling reading: {km} noong {date} · ~{estimate} rough estimate lang ngayon',
+    needsReading: 'Huling reading: {km} noong {date} · mag-log ng isa pang reading para ma-estimate ang mileage ngayon',
+    optionalHint: '{reference}. Iwanang blangko kung hindi mo alam ang reading.',
+    requiredError: 'Ilagay ang odometer reading na nasa motor mo.',
+  },
+  baseline: {
+    notSetUp: 'Hindi pa naka-set up. Ilagay ang odometer reading noong huli itong ginawa. Kung ngayong araw ginawa, i-tap ang Just serviced today (ilagay muna ang reading ngayon kung alam mo).',
+    needsKm: 'Ilagay ang odometer reading noong huli itong ginawa',
+  },
+  remindersList: {
+    notificationsEnded: 'Overdue simula {date}. Wala nang ipapadalang notification para dito; i-log ito kapag nagawa na.',
+  },
+  dataPrivacy: {
+    deleted: 'Nabura na ang lahat ng data',
+    deletedFilesRemain: 'Nabura na ang lahat ng record, pero may ilang naka-save na file na hindi nabura',
+  },
   onboarding: {
     carousel: {
       skip: 'Laktawan',
@@ -99,7 +130,7 @@ export const fil: DeepPartial<typeof en> = {
     },
     offer: {
       title: 'Gusto mo ba ng mabilisang tour?',
-      body: 'Dalawang minuto lang, puwede mo itong laktawan anumang oras. Puwede mo rin itong ulitin mamaya sa Settings.',
+      body: 'Mga 3 minuto lang, puwede mo itong laktawan anumang oras. Puwede mo rin itong ulitin mamaya sa Settings.',
       start: 'Simulan ang tour',
       later: 'Sa ibang pagkakataon na lang',
       never: 'Huwag nang ipakita ulit',

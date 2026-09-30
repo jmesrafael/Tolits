@@ -11,6 +11,7 @@ import { Screen } from '@/components/Screen';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { showToast } from '@/components/Toast';
 import { strings } from '@/i18n/strings';
+import { useStrings } from '@/i18n/useStrings';
 import { THEME_PREFERENCES } from '@/theme/registry';
 import { DataPrivacyService } from '@/services/DataPrivacyService';
 import { useSettingsStore, type LanguagePreference } from '@/stores/useSettingsStore';
@@ -57,11 +58,19 @@ export default function SettingsRoute() {
   const language = useSettingsStore((s) => s.language);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const localized = useStrings();
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setConfirmingReset(false);
-    DataPrivacyService.deleteAllData();
-    showToast({ kind: 'info', message: 'All data deleted' });
+    const result = await DataPrivacyService.deleteAllData();
+    if (!result.ok) {
+      showToast({ kind: 'error', message: result.error.message });
+      return;
+    }
+    showToast({
+      kind: 'info',
+      message: result.value.filesRemoved ? localized.dataPrivacy.deleted : localized.dataPrivacy.deletedFilesRemain,
+    });
     router.replace('/(tabs)');
   };
 
@@ -119,7 +128,9 @@ export default function SettingsRoute() {
         body="Type DELETE to confirm. This permanently erases every motorcycle and record. It cannot be undone."
         confirmLabel="Delete everything"
         typedConfirmation="DELETE"
-        onConfirm={handleReset}
+        onConfirm={() => {
+          void handleReset();
+        }}
         onCancel={() => setConfirmingReset(false)}
       />
     </Screen>

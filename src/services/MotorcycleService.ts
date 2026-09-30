@@ -16,7 +16,8 @@ import type { MotorcycleRow } from '@/db/schema';
 import { todayIso } from '@/lib/dates';
 import { emitDomainEvent } from '@/lib/events';
 import { appError, err, ok, type Result } from '@/lib/result';
-import { runTx } from './MaintenanceService';
+import { rollbackWith, runTx } from './MaintenanceService';
+import { OdometerService } from './OdometerService';
 import { ScheduleService } from './ScheduleService';
 import { motorcycleInput, type MotorcycleInput } from './validation/schemas';
 import { guardService, validateWith } from './serviceUtils';
@@ -78,7 +79,14 @@ export const MotorcycleService = {
     });
   },
 
-  /** Profile edits. Odometer changes go through OdometerService, never here. */
+  /**
+   * Profile edits. The bike's odometer is modeled as readings (odometer_logs →
+   * the current_odometer_km cache), never set directly: a CHANGED
+   * `currentOdometerKm` is recorded as a manual reading dated today through
+   * OdometerService (monotonicity-checked, same as the Odometer screen) instead
+   * of being silently dropped. An unchanged value — what the edit form sends,
+   * since it doesn't show the field — records nothing.
+   */
   updateBike(bikeId: string, input: unknown): Result<void> {
     const parsed = validateWith(motorcycleInput, input);
     if (!parsed.ok) {
@@ -98,6 +106,7 @@ export const MotorcycleService = {
         );
       }
       const drivetrainChanged = bike.drivetrainType !== value.drivetrainType;
+      const odometerChanged = value.currentOdometerKm !== bike.currentOdometerKm;
       const result = runTx(() => {
         MotorcycleRepository.update(bikeId, {
           nickname: value.nickname,
@@ -115,9 +124,29 @@ export const MotorcycleService = {
         if (drivetrainChanged) {
           ScheduleService.regateForDrivetrainInTx(bikeId, value.drivetrainType);
         }
+        if (odometerChanged) {
+          // The value is in effective km (what the cache/form show); readings store the
+          // meter value, effective − the bike's offset (ADR-009).
+          const odo = OdometerService.recordReadingInTx(
+            bikeId,
+            value.currentOdometerKm - bike.odometerOffsetKm,
+            todayIso(),
+            'manual',
+            null,
+          );
+          if (!odo.ok) {
+            rollbackWith({
+              ...odo.error,
+              fieldErrors: { currentOdometerKm: odo.error.fieldErrors?.odometerKm ?? odo.error.code },
+            });
+          }
+        }
       });
       if (result.ok) {
         emitDomainEvent('bike:changed', { bikeId });
+        if (odometerChanged) {
+          emitDomainEvent('odometer:changed', { bikeId });
+        }
         if (drivetrainChanged) {
           emitDomainEvent('schedule:changed', { bikeId });
         }

@@ -1,4 +1,4 @@
-import { computeHealthScore, healthBand, itemScore } from './HealthScoreService';
+import { computeHealthScore, healthBand, itemScore, scoreUsesMileage } from './HealthScoreService';
 import type { ScheduleStatus } from './StatusService';
 import type { ScheduleRow } from '@/db/schema';
 
@@ -123,5 +123,41 @@ describe('computeHealthScore — HEALTH_SCORE.md §7 worked examples', () => {
     const statuses = new Map<string, ScheduleStatus>([['a', makeStatus('a', 0.5)]]);
     const result = computeHealthScore(schedules, statuses);
     expect(result.isPartial).toBe(true);
+  });
+});
+
+describe('scoreUsesMileage — drives the "estimated" label on the score', () => {
+  const base = {
+    createdAt: 0,
+    updatedAt: 0,
+    deletedAt: null,
+    motorcycleId: 'b1',
+    customName: null,
+    isEnabled: 1,
+    isMuted: 0,
+    snoozedUntil: null,
+    anchorSource: 'record',
+    isPinned: 0,
+    pinnedSortOrder: 0,
+    sortOrder: 0,
+  };
+  const kmItem = { ...base, id: 'oil', componentType: 'engine_oil', intervalKm: 1500, intervalMonths: 3, anchorOdometerKm: 1000, anchorDate: '2026-01-01' };
+  const timeOnly = { ...base, id: 'bat', componentType: 'battery', intervalKm: null, intervalMonths: 24, anchorOdometerKm: null, anchorDate: '2026-01-01' };
+  const dateAnchored = { ...kmItem, id: 'oil2', anchorOdometerKm: null };
+  const status = (id: string) => ({ scheduleId: id, status: 'good' as const, ratio: 0.5, remainingKm: null, remainingDays: null, governs: 'km' as const, anchored: true });
+
+  test('true when a scored item has a km interval AND a km anchor', () => {
+    const result = computeHealthScore([kmItem], new Map([['oil', status('oil')]]));
+    expect(scoreUsesMileage(result, [kmItem])).toBe(true);
+  });
+
+  test('false when every scored item is time-based or date-anchored (score is not mileage-based)', () => {
+    const schedules = [timeOnly, dateAnchored];
+    const result = computeHealthScore(schedules, new Map([['bat', status('bat')], ['oil2', status('oil2')]]));
+    expect(scoreUsesMileage(result, schedules)).toBe(false);
+  });
+
+  test('false with no scored items', () => {
+    expect(scoreUsesMileage(computeHealthScore([kmItem], new Map()), [kmItem])).toBe(false);
   });
 });

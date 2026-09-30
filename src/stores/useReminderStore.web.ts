@@ -1,25 +1,20 @@
 import { create } from 'zustand';
 
-import type { ScheduleRow } from '@/db/schema';
+import type { ReminderItem } from '@/services/reminderItems';
 
-export interface ReminderItem {
-  schedule: ScheduleRow;
-  bikeId: string;
-  bikeNickname: string;
-  bucket: 'overdue' | 'thisWeek' | 'later';
-  remainingKm: number | null;
-  remainingDays: number | null;
-}
+export type { ReminderItem } from '@/services/reminderItems';
 
 interface ReminderState {
   items: ReminderItem[];
   status: 'idle' | 'ready';
-  load: () => void;
+  day: string | null;
+  load: (today?: string) => void;
 }
 
 /** Web preview store: reminders are derived from native SQLite data. */
 export const useReminderStore = create<ReminderState>((set) => ({
   items: [],
   status: 'idle',
-  load: () => set({ items: [], status: 'ready' }),
+  day: null,
+  load: (today) => set({ items: [], status: 'ready', day: today ?? null }),
 }));

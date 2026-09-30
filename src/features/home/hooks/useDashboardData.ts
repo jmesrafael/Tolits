@@ -7,7 +7,7 @@ import { useSchedules } from '@/features/maintenance/hooks/useSchedules';
 import { formatRemaining } from '@/features/maintenance/remainingText';
 import { useActiveBike } from '@/hooks/useActiveBike';
 import { strings } from '@/i18n/strings';
-import { addDays, todayIso } from '@/lib/dates';
+import { addDays } from '@/lib/dates';
 import { formatCategoryName, formatFullDate, formatMoney } from '@/lib/format';
 import { formatTimelineTitle, loadTimeline } from '@/services/TimelineService';
 import type { ChartTokens } from '@/theme/types';
@@ -39,7 +39,7 @@ function timelineKindToActivityKind(kind: string): ActivityKind {
 /** Live dashboard view model (replaces the fixture — DATA_FLOW.md §2). */
 export function useDashboardData(): DashboardVm {
   const { activeBike, ready: garageReady } = useActiveBike();
-  const { items, health } = useSchedules(activeBike?.id ?? null, activeBike?.currentOdometerKm ?? 0);
+  const { items, health, healthIsEstimated, odometer, today } = useSchedules(activeBike?.id ?? null);
 
   return useMemo(() => {
     const hour = new Date().getHours();
@@ -66,6 +66,8 @@ export function useDashboardData(): DashboardVm {
     const bandId: HealthBandId | null = health?.band ?? null;
     const bandLabel = bandId !== null ? strings.dashboard.band[bandId] : 'Finish setup';
 
+    // Km statuses were computed from the estimate when one exists — label them so.
+    const estimated = odometer?.statusIsEstimate ?? false;
     const upcoming = [...items]
       .filter((i) => i.status.status !== 'neutral')
       .sort((a, b) => (b.status.ratio ?? 0) - (a.status.ratio ?? 0))
@@ -77,11 +79,10 @@ export function useDashboardData(): DashboardVm {
           icon: componentIcon(componentType),
           label: componentLabel(componentType, i.schedule.customName),
           status: i.status.status,
-          remainingText: formatRemaining(i.status),
+          remainingText: formatRemaining(i.status, estimated),
         };
       });
 
-    const today = todayIso();
     const soon = addDays(today, 30);
     const expiring = DocumentRepository.listExpiringBy(soon).find(
       (d) => d.motorcycleId === activeBike.id || d.motorcycleId === null,
@@ -135,11 +136,15 @@ export function useDashboardData(): DashboardVm {
         brand: activeBike.brand,
         model: activeBike.model,
         plate: activeBike.plateNumber ?? '',
-        odometerKm: activeBike.currentOdometerKm,
-        odometerAsOf: today,
+        odometerKm: odometer?.actualKm ?? activeBike.currentOdometerKm,
+        odometerAsOf: odometer?.actualDate ?? null,
+        estimatedOdometerKm: odometer?.estimatedKm ?? null,
+        estimateIsRough: odometer?.rate.confidence === 'low',
+        needsMoreReadings: odometer?.needsMoreReadings ?? false,
       },
       healthScore: score,
       isPartialScore: health?.isPartial ?? false,
+      isEstimatedScore: healthIsEstimated,
       upcoming,
       ...(documentWarning !== undefined ? { documentWarning } : {}),
       activity,
@@ -160,5 +165,5 @@ export function useDashboardData(): DashboardVm {
       attentionCount: upcoming.filter((s) => s.status === 'dueSoon' || s.status === 'overdue').length,
       hasBike: true,
     };
-  }, [garageReady, activeBike, items, health]);
+  }, [garageReady, activeBike, items, health, healthIsEstimated, odometer, today]);
 }
