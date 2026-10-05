@@ -108,6 +108,8 @@ const expenseRowSchema = z.object({
   images: z.string().nullable(),
   build_id: z.string().nullable(),
   schedule_id: z.string().nullable(),
+  /** Added in migration 0004; older backups omit it. */
+  title: z.string().nullable().optional(),
 });
 
 const fuelRowSchema = z.object({

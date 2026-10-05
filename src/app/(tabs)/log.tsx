@@ -5,6 +5,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { ListSection } from '@/components/ListSection';
 import { PressableScale } from '@/components/PressableScale';
 import { Screen } from '@/components/Screen';
+import { QuickAddForm } from '@/features/quickAdd/QuickAddForm';
 import { useActiveBike } from '@/hooks/useActiveBike';
 import { makeStyles, typeStyle } from '@/theme/styles';
 import { useTheme } from '@/theme/useTheme';
@@ -60,8 +61,8 @@ export default function LogRoute() {
   return (
     <Screen withTabBarInset>
       <Text style={styles.title}>Log</Text>
-      <Text style={styles.subtitle}>What did you do with your bike today?</Text>
-      <ListSection title="Quick log">
+      {activeBike !== null ? <QuickAddForm motorcycleId={activeBike.id} /> : null}
+      <ListSection title="Detailed logs">
         {OPTIONS.map((option) => (
           <PressableScale
             key={option.href}

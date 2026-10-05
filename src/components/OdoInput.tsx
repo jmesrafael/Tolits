@@ -7,7 +7,7 @@ import { useTheme } from '@/theme/useTheme';
 export interface OdoInputProps {
   value: string;
   onChange: (value: string) => void;
-  lastReadingKm?: number;
+  lastReadingKm?: number | undefined;
 }
 
 const useStyles = makeStyles((t) =>

@@ -98,6 +98,8 @@ export const expenses = sqliteTable('expenses', {
   buildId: text('build_id'),
   /** Optional link to the maintenance component this expense was for (migration 0003). */
   scheduleId: text('schedule_id'),
+  /** What was bought, e.g. "Motul 10W-40" (migration 0004). Null on rows saved before it existed. */
+  title: text('title'),
 });
 
 export const fuelLogs = sqliteTable('fuel_logs', {

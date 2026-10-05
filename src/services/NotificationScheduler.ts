@@ -7,9 +7,8 @@
  * logged and swallowed (§9); the in-app Reminders list (S-05) remains the
  * source of truth regardless of whether this succeeded.
  *
- * Not implemented yet (see docs/PROGRESS.md): deep-link routing on tap
- * (T-404), the notification settings screen wiring beyond load/save (T-406),
- * and device-real verification (T-407, requires physical hardware).
+ * Tap handling lives in `wireNotificationResponses` (T-404). Still open (see
+ * docs/PROGRESS.md): device-real verification (T-407) and the dev fire-time override (T-406).
  */
 
 import * as Notifications from 'expo-notifications';
@@ -30,6 +29,7 @@ import { log } from '@/lib/log';
 import type { ComponentType, DocType } from '@/types/enums';
 import type { DailyRateResult } from './FuelService';
 import { OdometerService } from './OdometerService';
+import { routeForNotificationKey } from './notificationRoute';
 import {
   DEFAULT_REMINDER_SETTINGS,
   type NotificationPrefs,
@@ -264,13 +264,16 @@ export async function replanNotifications(): Promise<void> {
     const plannerInput = gatherPlannerInput(settings);
     const plan = planReminders(plannerInput, nowMs());
 
-    const previous = ScheduledNotificationRepository.listAll();
-    for (const row of previous) {
-      try {
-        await Notifications.cancelScheduledNotificationAsync(row.notificationId);
-      } catch (error) {
-        log.warn('notifications.cancelFailed', { error: String(error) });
-      }
+    // Clear at the OS level, not per row: a row we fail to cancel would be
+    // dropped from the table and its OS notification would fire forever as an
+    // orphan, duplicating every later reminder. Every scheduled notification in
+    // this app is Tolits's, so cancel-all is safe (same assumption as delete-all).
+    // If the OS refuses, schedule nothing new on top of the old ones.
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (error) {
+      log.error('notifications.cancelAllFailed', { error: String(error) });
+      return;
     }
     ScheduledNotificationRepository.deleteAll();
 
@@ -361,4 +364,32 @@ export function wireNotificationCascade(): () => void {
     ],
     () => triggerReplan(),
   );
+}
+
+/**
+ * Opens the record a reminder is about when the user taps it (T-404). Covers a
+ * tap while running, a tap that cold-starts the app (last response), and the
+ * same tap delivered again on relaunch: each response is handled once.
+ */
+export function wireNotificationResponses(open: (route: string) => void): () => void {
+  if (Platform.OS === 'web') {
+    return () => {};
+  }
+  let handled: string | null = null;
+  const handle = (response: Notifications.NotificationResponse | null) => {
+    if (response === null) {
+      return;
+    }
+    const identifier = response.notification.request.identifier;
+    if (identifier === handled) {
+      return;
+    }
+    handled = identifier;
+    open(routeForNotificationKey(response.notification.request.content.data?.key));
+  };
+  const subscription = Notifications.addNotificationResponseReceivedListener(handle);
+  Notifications.getLastNotificationResponseAsync()
+    .then(handle)
+    .catch((error: unknown) => log.warn('notifications.lastResponseFailed', { error: String(error) }));
+  return () => subscription.remove();
 }

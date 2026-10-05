@@ -29,7 +29,12 @@ export const motorcycleInput = z.object({
     .max(new Date().getFullYear() + 1)
     .nullable(),
   drivetrainType: z.enum(DRIVETRAIN_TYPES),
-  plateNumber: z.string().trim().max(8).transform(s => s.toUpperCase()).nullable(),
+  plateNumber: z
+    .string()
+    .trim()
+    .max(8)
+    .transform((s) => s.toUpperCase())
+    .nullable(),
   vin: z.string().trim().max(20).nullable(),
   engineNumber: z.string().trim().max(20).nullable(),
   purchaseDate: pastOrTodayDate.nullable(),
@@ -73,6 +78,13 @@ const expenseCategory = z
   .transform((s) => s.replace(/\s+/g, ' '));
 
 export const expenseInput = z.object({
+  /** Optional item name; absent or blank becomes null (callers that predate migration 0004 omit it). */
+  title: z
+    .string()
+    .trim()
+    .max(60)
+    .nullish()
+    .transform((s) => (s === undefined || s === null || s === '' ? null : s)),
   category: expenseCategory,
   amountCentavos: money.min(1, 'amountRequired'),
   expenseDate: pastOrTodayDate,

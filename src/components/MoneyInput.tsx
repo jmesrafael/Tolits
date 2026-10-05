@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { forwardRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { sanitizePesosText } from '@/lib/format';
 import { makeStyles, typeStyle } from '@/theme/styles';
 import { useTheme } from '@/theme/useTheme';
 
@@ -8,6 +9,8 @@ export interface MoneyInputProps {
   /** Displayed value as pesos-and-centavos text, e.g. "450.00". */
   value: string;
   onChange: (value: string) => void;
+  returnKeyType?: 'done' | 'next';
+  onSubmitEditing?: () => void;
 }
 
 const useStyles = makeStyles((t) =>
@@ -37,8 +40,14 @@ const useStyles = makeStyles((t) =>
   }),
 );
 
-/** ₱ prefix money entry; caller converts to centavos on submit (ADR-008). */
-export function MoneyInput({ value, onChange }: MoneyInputProps) {
+/**
+ * ₱ prefix money entry; caller converts to centavos with parsePesosToCentavos (ADR-008).
+ * Forwards its ref so a form can move focus here (e.g. after the item name's Next).
+ */
+export const MoneyInput = forwardRef<TextInput, MoneyInputProps>(function MoneyInput(
+  { value, onChange, returnKeyType = 'done', onSubmitEditing },
+  ref,
+) {
   const styles = useStyles();
   const { tokens } = useTheme();
   const [focused, setFocused] = useState(false);
@@ -46,10 +55,13 @@ export function MoneyInput({ value, onChange }: MoneyInputProps) {
     <View style={[styles.row, focused && styles.focused]}>
       <Text style={styles.prefix}>₱</Text>
       <TextInput
+        ref={ref}
         style={styles.input}
         value={value}
-        onChangeText={(t) => onChange(t.replace(/[^0-9.]/g, ''))}
+        onChangeText={(t) => onChange(sanitizePesosText(t))}
         keyboardType="decimal-pad"
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
         placeholder="0.00"
         placeholderTextColor={tokens.text.placeholder}
         accessibilityLabel="Amount, pesos"
@@ -58,4 +70,4 @@ export function MoneyInput({ value, onChange }: MoneyInputProps) {
       />
     </View>
   );
-}
+});

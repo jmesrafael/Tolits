@@ -44,6 +44,35 @@ export function formatMoneyWhole(centavos: number): string {
   return pesoWhole.format(Math.round(centavos / 100));
 }
 
+/**
+ * Keeps only digits and one decimal point, with at most two decimals, so an
+ * amount field can't hold "1.2.3" or "4.567".
+ */
+export function sanitizePesosText(text: string): string {
+  const cleaned = text.replace(/[^0-9.]/g, '');
+  const [whole = '', ...rest] = cleaned.split('.');
+  if (rest.length === 0) {
+    return whole;
+  }
+  return `${whole}.${rest.join('').slice(0, 2)}`;
+}
+
+/**
+ * Exact pesos text ("450", "450.5", "1200.25") to integer centavos, without
+ * floating-point multiplication. Returns null for anything that isn't a valid amount.
+ */
+export function parsePesosToCentavos(text: string): number | null {
+  const match = /^(\d*)(?:\.(\d{0,2}))?$/.exec(text.trim());
+  if (match === null) {
+    return null;
+  }
+  const [, whole = '', fraction = ''] = match;
+  if (whole === '' && fraction === '') {
+    return null;
+  }
+  return Number(whole === '' ? '0' : whole) * 100 + Number((fraction + '00').slice(0, 2));
+}
+
 export function formatKm(km: number): string {
   return `${number.format(km)} km`;
 }

@@ -9,6 +9,8 @@ export interface TimelineItemProps {
   icon: IconName;
   title: string;
   caption: string;
+  /** Optional third line (e.g. notes), truncated to one line. */
+  detail?: string | undefined;
   amount: string;
   /** Repairs render visually distinct: icon + accent edge. */
   isRepair?: boolean;
@@ -50,7 +52,7 @@ const useStyles = makeStyles((t) =>
   }),
 );
 
-export function TimelineItem({ icon, title, caption, amount, isRepair = false, onPress }: TimelineItemProps) {
+export function TimelineItem({ icon, title, caption, detail, amount, isRepair = false, onPress }: TimelineItemProps) {
   const styles = useStyles();
   const { tokens } = useTheme();
 
@@ -60,14 +62,20 @@ export function TimelineItem({ icon, title, caption, amount, isRepair = false, o
       dim
       scaleTo={0.99}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${caption}, ${amount}`}
-      style={[styles.row, isRepair && styles.repairEdge]}>
+      accessibilityLabel={`${title}, ${caption}${detail !== undefined ? `, ${detail}` : ''}, ${amount}`}
+      style={[styles.row, isRepair && styles.repairEdge]}
+    >
       <View style={styles.iconWell}>
         <Icon name={icon} size={tokens.iconSize.listLeading} {...(isRepair ? { color: tokens.accent } : {})} />
       </View>
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.caption}>{caption}</Text>
+        {detail !== undefined ? (
+          <Text style={styles.caption} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
       {amount !== '' ? <Text style={styles.amount}>{amount}</Text> : null}
     </PressableScale>

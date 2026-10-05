@@ -11,14 +11,22 @@ import { StatCard } from '@/components/StatCard';
 import { TimelineItem } from '@/components/TimelineItem';
 import { useActiveBike } from '@/hooks/useActiveBike';
 import { formatCategoryName, formatMoney, formatMonthDay } from '@/lib/format';
+import { unifiedRowName } from '@/lib/expenseDisplay';
 import { useMoneyStore } from '@/stores/useMoneyStore';
 import { makeStyles, typeStyle } from '@/theme/styles';
 
 const useStyles = makeStyles((t) =>
   StyleSheet.create({
     title: typeStyle(t.type.h1, t.text.primary),
-    total: { ...typeStyle(t.type.display, t.text.primary), fontVariant: ['tabular-nums'] },
-    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    total: {
+      ...typeStyle(t.type.display, t.text.primary),
+      fontVariant: ['tabular-nums'],
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
   }),
 );
 
@@ -61,27 +69,34 @@ export default function MoneyRoute() {
         <>
           <Text style={styles.total}>{formatMoney(money.monthTotalCentavos)}</Text>
           <PrimaryButton label="+ Expense" onPress={() => router.push('/expense/log')} />
-          {money.unified.map((row) => (
-            <TimelineItem
-              key={`${row.source}-${row.id}`}
-              icon={row.source === 'fuel' ? 'fuel' : row.source === 'repair' ? 'repair' : 'expense'}
-              title={formatCategoryName(row.category)}
-              caption={`${formatMonthDay(row.date)}${row.label !== null ? ` · ${row.label}` : ''}`}
-              amount={formatMoney(row.amountCentavos)}
-              isRepair={row.source === 'repair'}
-              onPress={() => {
-                if (row.source === 'expense') {
-                  router.push(`/expense/log?expenseId=${row.id}`);
-                } else if (row.source === 'fuel') {
-                  router.push(`/fuel/log?fuelLogId=${row.id}`);
-                } else if (row.source === 'repair') {
-                  router.push(`/repair/log?repairId=${row.id}`);
-                } else {
-                  router.push(`/maintenance/log?recordId=${row.id}`);
+          {money.unified.map((row) => {
+            const categoryName = formatCategoryName(row.category);
+            const name = unifiedRowName(row);
+            return (
+              <TimelineItem
+                key={`${row.source}-${row.id}`}
+                icon={row.source === 'fuel' ? 'fuel' : row.source === 'repair' ? 'repair' : 'expense'}
+                title={name}
+                caption={
+                  name !== categoryName ? `${formatMonthDay(row.date)} · ${categoryName}` : formatMonthDay(row.date)
                 }
-              }}
-            />
-          ))}
+                detail={row.source === 'expense' && row.label !== null ? row.label : undefined}
+                amount={formatMoney(row.amountCentavos)}
+                isRepair={row.source === 'repair'}
+                onPress={() => {
+                  if (row.source === 'expense') {
+                    router.push(`/expense/log?expenseId=${row.id}`);
+                  } else if (row.source === 'fuel') {
+                    router.push(`/fuel/log?fuelLogId=${row.id}`);
+                  } else if (row.source === 'repair') {
+                    router.push(`/repair/log?repairId=${row.id}`);
+                  } else {
+                    router.push(`/maintenance/log?recordId=${row.id}`);
+                  }
+                }}
+              />
+            );
+          })}
         </>
       ) : (
         <>

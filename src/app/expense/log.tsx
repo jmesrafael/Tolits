@@ -54,6 +54,7 @@ export default function ExpenseLogRoute() {
   const bikeId = existing?.motorcycleId ?? activeBike?.id ?? null;
   const builds = bikeId !== null ? BuildRepository.listByBike(bikeId) : [];
 
+  const [title, setTitle] = useState(existing?.title ?? '');
   const [category, setCategory] = useState(existing?.category ?? 'other');
   const [amount, setAmount] = useState(existing !== undefined ? (existing.amountCentavos / 100).toFixed(2) : '');
   const [date, setDate] = useState(existing?.expenseDate ?? todayIso());
@@ -68,9 +69,16 @@ export default function ExpenseLogRoute() {
   const existingCategories = ExpenseRepository.listDistinctCategories().filter((c) => c !== 'fuel');
   const categoryOptions = [
     ...new Map(
-      [...NEW_ENTRY_CATEGORIES.map((c) => ({ value: c, label: formatCategoryName(c) })), ...existingCategories.map((c) => ({ value: c, label: formatCategoryName(c) }))].map(
-        (o) => [o.value.toLowerCase(), o],
-      ),
+      [
+        ...NEW_ENTRY_CATEGORIES.map((c) => ({
+          value: c,
+          label: formatCategoryName(c),
+        })),
+        ...existingCategories.map((c) => ({
+          value: c,
+          label: formatCategoryName(c),
+        })),
+      ].map((o) => [o.value.toLowerCase(), o]),
     ).values(),
   ];
 
@@ -84,6 +92,7 @@ export default function ExpenseLogRoute() {
 
   const handleSubmit = () => {
     const input = {
+      title,
       category,
       amountCentavos: amount !== '' ? Math.round(Number(amount) * 100) : 0,
       expenseDate: date,
@@ -93,7 +102,9 @@ export default function ExpenseLogRoute() {
       scheduleId: existing?.scheduleId ?? scheduleIdParam ?? null,
     };
     const result =
-      existing !== undefined ? ExpenseService.editExpense(existing.id, input) : ExpenseService.saveExpense(bikeId, input);
+      existing !== undefined
+        ? ExpenseService.editExpense(existing.id, input)
+        : ExpenseService.saveExpense(bikeId, input);
     if (!result.ok) {
       setFieldErrors(result.error.fieldErrors);
       setError(result.error.message);
@@ -118,10 +129,13 @@ export default function ExpenseLogRoute() {
       {error !== undefined ? <Text style={styles.error}>{error}</Text> : null}
       {isLegacyFuel ? (
         <Text style={styles.error}>
-          This is a fuel expense from before Fuel had its own tab. It stays here for your records; new fuel entries
-          go under Money &gt; Fuel.
+          This is a fuel expense from before Fuel had its own tab. It stays here for your records; new fuel entries go
+          under Money &gt; Fuel.
         </Text>
       ) : null}
+      <FormField label="Item" hint="What you bought, e.g. Motul 10W-40. Shown in the list." error={fieldErrors?.title}>
+        <TextField value={title} onChangeText={setTitle} maxLength={60} placeholder="What you bought" />
+      </FormField>
       <FormField label="Category" required error={fieldErrors?.category}>
         <SearchOrAdd
           options={categoryOptions}

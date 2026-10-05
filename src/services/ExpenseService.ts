@@ -35,6 +35,7 @@ export const ExpenseService = {
       const result = runTx(() =>
         ExpenseRepository.insert({
           motorcycleId,
+          title: value.title,
           category: value.category,
           amountCentavos: value.amountCentavos,
           expenseDate: value.expenseDate,
@@ -64,6 +65,7 @@ export const ExpenseService = {
       }
       const result = runTx(() => {
         ExpenseRepository.update(expenseId, {
+          title: value.title,
           category: value.category,
           amountCentavos: value.amountCentavos,
           expenseDate: value.expenseDate,

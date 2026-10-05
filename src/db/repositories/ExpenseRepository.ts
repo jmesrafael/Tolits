@@ -17,6 +17,8 @@ export interface NewExpense {
   buildId: string | null;
   /** Optional link to the maintenance component this expense was for (migration 0003). */
   scheduleId: string | null;
+  /** What was bought (migration 0004). */
+  title: string | null;
 }
 
 export type ExpenseUpdate = Partial<Omit<NewExpense, 'motorcycleId'>>;
@@ -30,7 +32,9 @@ export interface UnifiedExpenseRow {
   /** Free-form since migration 0002 for standalone expenses; derived rows (fuel/maintenance/repair) still use the fixed buckets from UNION_SQL below. */
   category: ExpenseCategory | string;
   amountCentavos: number;
-  /** component_type for maintenance rows, title for repairs, station for fuel, notes for expenses. */
+  /** What was bought: expense title, repair title, fuel station, custom maintenance name. Null when the source has none (fall back to the category). */
+  title: string | null;
+  /** Secondary detail. Standalone expenses: notes. Maintenance: the raw component_type (display via formatComponentName). */
   label: string | null;
 }
 
@@ -58,7 +62,7 @@ export interface MonthCategoryTotal extends CategoryTotal {
  */
 const UNION_SQL = `
   SELECT f.id AS id, 'fuel' AS source, f.motorcycle_id AS motorcycle_id, f.fuel_date AS date,
-         'fuel' AS category, f.total_cost_centavos AS amount_centavos, f.station AS label
+         'fuel' AS category, f.total_cost_centavos AS amount_centavos, f.station AS title, NULL AS label
     FROM fuel_logs f WHERE f.deleted_at IS NULL
   UNION ALL
   SELECT r.id, 'maintenance', r.motorcycle_id, r.performed_date,
@@ -66,15 +70,16 @@ const UNION_SQL = `
               WHEN s.component_type IN ('tire_front','tire_rear') THEN 'tires'
               ELSE 'service' END,
          r.cost_centavos,
-         CASE WHEN s.component_type = 'custom' THEN s.custom_name ELSE s.component_type END
+         CASE WHEN s.component_type = 'custom' THEN s.custom_name ELSE NULL END,
+         s.component_type
     FROM maintenance_records r
     JOIN maintenance_schedules s ON s.id = r.schedule_id
    WHERE r.deleted_at IS NULL AND r.cost_centavos > 0
   UNION ALL
-  SELECT p.id, 'repair', p.motorcycle_id, p.repair_date, 'repair', p.cost_centavos, p.title
+  SELECT p.id, 'repair', p.motorcycle_id, p.repair_date, 'repair', p.cost_centavos, p.title, NULL
     FROM repairs p WHERE p.deleted_at IS NULL AND p.cost_centavos > 0
   UNION ALL
-  SELECT e.id, 'expense', e.motorcycle_id, e.expense_date, e.category, e.amount_centavos, e.notes
+  SELECT e.id, 'expense', e.motorcycle_id, e.expense_date, e.category, e.amount_centavos, e.title, e.notes
     FROM expenses e WHERE e.deleted_at IS NULL
 `;
 
@@ -85,14 +90,17 @@ interface RawUnifiedRow {
   date: string;
   category: ExpenseCategory;
   amount_centavos: number;
+  title: string | null;
   label: string | null;
 }
 
 /** All-bikes scopes exclude archived bikes by default (BUSINESS_RULES.md §9.5). */
-const NON_ARCHIVED_SCOPE =
-  'motorcycle_id IN (SELECT id FROM motorcycles WHERE deleted_at IS NULL AND is_archived = 0)';
+const NON_ARCHIVED_SCOPE = 'motorcycle_id IN (SELECT id FROM motorcycles WHERE deleted_at IS NULL AND is_archived = 0)';
 
-function unifiedWhere(filter: UnifiedFilter): { clause: string; params: string[] } {
+function unifiedWhere(filter: UnifiedFilter): {
+  clause: string;
+  params: string[];
+} {
   const conditions: string[] = [];
   const params: string[] = [];
   if (filter.motorcycleId !== undefined) {
@@ -102,14 +110,17 @@ function unifiedWhere(filter: UnifiedFilter): { clause: string; params: string[]
     conditions.push(NON_ARCHIVED_SCOPE);
   }
   if (filter.month !== undefined) {
-    conditions.push("substr(date, 1, 7) = ?");
+    conditions.push('substr(date, 1, 7) = ?');
     params.push(filter.month);
   }
   if (filter.category !== undefined) {
     conditions.push('category = ?');
     params.push(filter.category);
   }
-  return { clause: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '', params };
+  return {
+    clause: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  };
 }
 
 const notDeleted = isNull(expenses.deletedAt);
@@ -190,7 +201,9 @@ export const ExpenseRepository = {
       'expenses.buildTotal',
       () =>
         db
-          .select({ total: sql<number>`COALESCE(SUM(${expenses.amountCentavos}), 0)` })
+          .select({
+            total: sql<number>`COALESCE(SUM(${expenses.amountCentavos}), 0)`,
+          })
           .from(expenses)
           .where(and(eq(expenses.buildId, buildId), notDeleted))
           .get()?.total ?? 0,
@@ -198,9 +211,7 @@ export const ExpenseRepository = {
   },
 
   softDelete(id: string): void {
-    guard('expenses.softDelete', () =>
-      db.update(expenses).set(softDeleteMeta()).where(eq(expenses.id, id)).run(),
-    );
+    guard('expenses.softDelete', () => db.update(expenses).set(softDeleteMeta()).where(eq(expenses.id, id)).run());
   },
 
   softDeleteByBike(motorcycleId: string): void {
@@ -228,6 +239,7 @@ export const ExpenseRepository = {
         date: r.date,
         category: r.category,
         amountCentavos: r.amount_centavos,
+        title: r.title,
         label: r.label,
       }));
     });
@@ -237,18 +249,20 @@ export const ExpenseRepository = {
   categoryTotals(filter: UnifiedFilter = {}): CategoryTotal[] {
     return guard('expenses.categoryTotals', () => {
       const { clause, params } = unifiedWhere(filter);
-      return rawDb.getAllSync<{ category: ExpenseCategory; total: number }>(
-        `SELECT category, SUM(amount_centavos) AS total FROM (${UNION_SQL}) ${clause}
+      return rawDb
+        .getAllSync<{ category: ExpenseCategory; total: number }>(
+          `SELECT category, SUM(amount_centavos) AS total FROM (${UNION_SQL}) ${clause}
          GROUP BY category ORDER BY total DESC`,
-        params,
-      ).map((r) => ({ category: r.category, totalCentavos: r.total }));
+          params,
+        )
+        .map((r) => ({ category: r.category, totalCentavos: r.total }));
     });
   },
 
   /** Per-month per-category totals from `fromMonth` ('YYYY-MM') — chart series. */
   monthlyCategoryTotals(motorcycleId: string | undefined, fromMonth: string): MonthCategoryTotal[] {
     return guard('expenses.monthlyCategoryTotals', () => {
-      const conditions = ["substr(date, 1, 7) >= ?"];
+      const conditions = ['substr(date, 1, 7) >= ?'];
       const params: string[] = [fromMonth];
       if (motorcycleId !== undefined) {
         conditions.push('motorcycle_id = ?');
@@ -256,12 +270,22 @@ export const ExpenseRepository = {
       } else {
         conditions.push(NON_ARCHIVED_SCOPE);
       }
-      return rawDb.getAllSync<{ month: string; category: ExpenseCategory; total: number }>(
-        `SELECT substr(date, 1, 7) AS month, category, SUM(amount_centavos) AS total
+      return rawDb
+        .getAllSync<{
+          month: string;
+          category: ExpenseCategory;
+          total: number;
+        }>(
+          `SELECT substr(date, 1, 7) AS month, category, SUM(amount_centavos) AS total
            FROM (${UNION_SQL}) WHERE ${conditions.join(' AND ')}
           GROUP BY month, category ORDER BY month ASC`,
-        params,
-      ).map((r) => ({ month: r.month, category: r.category, totalCentavos: r.total }));
+          params,
+        )
+        .map((r) => ({
+          month: r.month,
+          category: r.category,
+          totalCentavos: r.total,
+        }));
     });
   },
 
@@ -307,10 +331,8 @@ export const ExpenseRepository = {
       }
       const clause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       return (
-        rawDb.getFirstSync<{ first: string | null }>(
-          `SELECT MIN(date) AS first FROM (${UNION_SQL}) ${clause}`,
-          params,
-        )?.first ?? null
+        rawDb.getFirstSync<{ first: string | null }>(`SELECT MIN(date) AS first FROM (${UNION_SQL}) ${clause}`, params)
+          ?.first ?? null
       );
     });
   },
@@ -327,7 +349,10 @@ export const ExpenseRepository = {
         conditions.push(NON_ARCHIVED_SCOPE);
       }
       const clause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-      const rows = rawDb.getAllSync<{ source: UnifiedExpenseRow['source']; total: number }>(
+      const rows = rawDb.getAllSync<{
+        source: UnifiedExpenseRow['source'];
+        total: number;
+      }>(
         `SELECT source, COALESCE(SUM(amount_centavos), 0) AS total FROM (${UNION_SQL}) ${clause}
          GROUP BY source`,
         params,

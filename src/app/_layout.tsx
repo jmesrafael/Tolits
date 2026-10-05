@@ -3,7 +3,7 @@ import {
   DefaultTheme as NavDefaultTheme,
   ThemeProvider as NavThemeProvider,
 } from 'expo-router';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -15,7 +15,12 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { RecoveryScreen } from '@/components/RecoveryScreen';
 import { ToastHost } from '@/components/Toast';
 import { initDatabase } from '@/db/client';
-import { initNotifications, triggerReplan, wireNotificationCascade } from '@/services/NotificationScheduler';
+import {
+  initNotifications,
+  triggerReplan,
+  wireNotificationCascade,
+  wireNotificationResponses,
+} from '@/services/NotificationScheduler';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTutorialStore } from '@/stores/useTutorialStore';
 import { loadBrandFonts } from '@/theme/fonts';
@@ -96,6 +101,7 @@ function useNotificationCascade(ready: boolean): void {
     initNotifications();
     triggerReplan();
     const offCascade = wireNotificationCascade();
+    const offResponses = wireNotificationResponses((route) => router.push(route as never));
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         triggerReplan();
@@ -103,6 +109,7 @@ function useNotificationCascade(ready: boolean): void {
     });
     return () => {
       offCascade();
+      offResponses();
       subscription.remove();
     };
   }, [ready]);

@@ -166,9 +166,7 @@ export const BuildService = {
         return err(appError('BusinessRuleError', 'build.planItemNotFound', 'Plan item not found'));
       }
       const build = BuildRepository.getById(existing.buildId);
-      const result = runTx(() =>
-        BuildPlanItemRepository.update(itemId, { isAcquired: acquired ? 1 : 0 }),
-      );
+      const result = runTx(() => BuildPlanItemRepository.update(itemId, { isAcquired: acquired ? 1 : 0 }));
       if (result.ok) {
         emitDomainEvent('build:changed', { bikeId: build?.motorcycleId, buildId: existing.buildId });
       }
@@ -189,9 +187,7 @@ export const BuildService = {
         return err(appError('BusinessRuleError', 'build.planItemNotFound', 'Plan item not found'));
       }
       if (item.acquiredExpenseId !== null) {
-        return err(
-          appError('BusinessRuleError', 'build.alreadyAcquired', 'This item is already logged as an expense'),
-        );
+        return err(appError('BusinessRuleError', 'build.alreadyAcquired', 'This item is already logged as an expense'));
       }
       const build = BuildRepository.getById(item.buildId);
       if (build === undefined) {
@@ -200,10 +196,11 @@ export const BuildService = {
       const result = runTx(() => {
         const expense = ExpenseRepository.insert({
           motorcycleId: build.motorcycleId,
+          title: item.name,
           category,
           amountCentavos: item.estimatedPriceCentavos ?? 0,
           expenseDate,
-          notes: item.name,
+          notes: null,
           images: item.photos !== null ? (JSON.parse(item.photos) as string[]) : null,
           buildId: build.id,
           scheduleId: null,
